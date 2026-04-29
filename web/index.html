@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="theme-color" content="#0f172a" />
+    <title>Balance Tracker</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <svg class="sprite" aria-hidden="true">
+      <symbol id="icon-home" viewBox="0 0 24 24">
+        <path d="M3 11.5 12 4l9 7.5" />
+        <path d="M5 10.5V20h5v-5h4v5h5v-9.5" />
+      </symbol>
+      <symbol id="icon-wallet" viewBox="0 0 24 24">
+        <path d="M4 7.5h15a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h13" />
+        <path d="M17 13h4" />
+      </symbol>
+      <symbol id="icon-portfolio" viewBox="0 0 24 24">
+        <path d="M4 19V5" />
+        <path d="M4 19h16" />
+        <path d="m7 15 3-4 3 2 5-7" />
+      </symbol>
+      <symbol id="icon-analysis" viewBox="0 0 24 24">
+        <path d="M4 19V5" />
+        <path d="M8 17V9" />
+        <path d="M13 17V6" />
+        <path d="M18 17v-5" />
+      </symbol>
+      <symbol id="icon-chat" viewBox="0 0 24 24">
+        <path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z" />
+      </symbol>
+    </svg>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Private tracker</p>
+          <h1>Balance</h1>
+        </div>
+        <button class="icon-button" id="lockButton" aria-label="Lock app" title="Lock app">Lock</button>
+      </header>
+
+      <main>
+        <section class="view active" id="dashboardView">
+          <div class="metric-grid">
+            <article class="metric primary">
+              <span>Net worth</span>
+              <strong id="netWorth">EUR 0</strong>
+              <small id="netWorthDelta">No movement yet</small>
+            </article>
+            <article class="metric">
+              <span>Cash</span>
+              <strong id="cashTotal">EUR 0</strong>
+            </article>
+            <article class="metric">
+              <span>Portfolio</span>
+              <strong id="portfolioTotal">EUR 0</strong>
+            </article>
+            <article class="metric">
+              <span>PnL</span>
+              <strong id="pnlTotal">EUR 0</strong>
+            </article>
+          </div>
+
+          <section class="panel">
+            <div class="section-head">
+              <h2>Net Worth Trend</h2>
+              <span id="trendLabel">Today</span>
+            </div>
+            <div class="chart-wrap">
+              <svg id="netWorthChart" role="img" aria-label="Net worth chart"></svg>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <h2>Recent Activity</h2>
+              <button class="text-button" data-tab="chatView">Add</button>
+            </div>
+            <div class="activity-list" id="activityList"></div>
+          </section>
+        </section>
+
+        <section class="view" id="accountsView">
+          <div class="section-head tall">
+            <div>
+              <p class="eyebrow">Accounts</p>
+              <h2>Balances</h2>
+            </div>
+            <button class="primary-button" id="addAccountButton">New</button>
+          </div>
+          <form class="inline-form hidden" id="accountForm">
+            <input id="accountName" autocomplete="off" placeholder="Account name" required />
+            <input id="accountBalance" inputmode="decimal" type="number" step="0.01" placeholder="Opening balance" required />
+            <button type="submit">Add</button>
+          </form>
+          <div class="account-list" id="accountList"></div>
+        </section>
+
+        <section class="view" id="portfolioView">
+          <div class="section-head tall">
+            <div>
+              <p class="eyebrow">Portfolio</p>
+              <h2>Holdings</h2>
+            </div>
+            <div class="button-row">
+              <button class="text-button" id="refreshPricesButton">Live</button>
+              <button class="primary-button" id="addHoldingButton">New</button>
+            </div>
+          </div>
+          <article class="portfolio-hero">
+            <span>Total value</span>
+            <strong id="portfolioLiveValue">EUR 0</strong>
+            <small id="portfolioLivePnl">EUR 0 (0.00%)</small>
+            <em id="priceStatus">Manual prices</em>
+          </article>
+          <div class="kpi-strip" id="portfolioKpis"></div>
+          <form class="holding-form hidden" id="holdingForm">
+            <input id="holdingSymbol" autocomplete="off" placeholder="Symbol" required />
+            <input id="holdingQuantity" inputmode="decimal" type="number" step="0.000001" placeholder="Qty" required />
+            <input id="holdingCost" inputmode="decimal" type="number" step="0.01" placeholder="Avg cost" required />
+            <input id="holdingPrice" inputmode="decimal" type="number" step="0.01" placeholder="Price now" required />
+            <button type="submit">Add</button>
+          </form>
+          <section class="panel portfolio-xray">
+            <div class="section-head">
+              <h2>X-Ray</h2>
+              <span id="portfolioXrayLabel">Asset mix</span>
+            </div>
+            <div class="bar-list" id="portfolioXray"></div>
+          </section>
+          <div class="holding-list" id="holdingList"></div>
+        </section>
+
+        <section class="view" id="analysisView">
+          <div class="section-head tall">
+            <div>
+              <p class="eyebrow">Analysis</p>
+              <h2>Insights</h2>
+            </div>
+          </div>
+          <div class="insight-grid">
+            <article class="insight-card">
+              <span>Monthly inflow</span>
+              <strong id="monthlyInflow">EUR 0</strong>
+            </article>
+            <article class="insight-card">
+              <span>Monthly outflow</span>
+              <strong id="monthlyOutflow">EUR 0</strong>
+            </article>
+            <article class="insight-card">
+              <span>Savings rate</span>
+              <strong id="savingsRate">0%</strong>
+            </article>
+            <article class="insight-card">
+              <span>Runway</span>
+              <strong id="runwayMonths">--</strong>
+            </article>
+          </div>
+          <section class="panel">
+            <div class="section-head">
+              <h2>Evolution</h2>
+              <span id="evolutionLabel">60 days</span>
+            </div>
+            <div class="mini-chart-wrap">
+              <svg id="analysisChart" role="img" aria-label="Net worth evolution chart"></svg>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="section-head">
+              <h2>Signals</h2>
+              <span id="signalCount">0 active</span>
+            </div>
+            <div class="signal-list" id="signalList"></div>
+          </section>
+          <section class="panel">
+            <div class="section-head">
+              <h2>Account Split</h2>
+              <span id="accountSplitLabel">0 accounts</span>
+            </div>
+            <div class="bar-list" id="accountBars"></div>
+          </section>
+          <section class="panel">
+            <div class="section-head">
+              <h2>Categories</h2>
+              <span>This month</span>
+            </div>
+            <div class="bar-list" id="categoryBars"></div>
+          </section>
+        </section>
+
+        <section class="view" id="chatView">
+          <div class="chat-header">
+            <div>
+              <p class="eyebrow">OpenClaw-ready</p>
+              <h2>Chat Ledger</h2>
+            </div>
+          </div>
+          <div class="chat-log" id="chatLog"></div>
+          <form class="chat-box" id="chatForm">
+            <input id="chatInput" autocomplete="off" placeholder="Added 1500 to account1" />
+            <button type="submit">Send</button>
+          </form>
+        </section>
+      </main>
+
+      <nav class="tabbar" aria-label="Primary">
+        <button class="tab active" data-tab="dashboardView" aria-label="Home" title="Home">
+          <svg><use href="#icon-home"></use></svg>
+        </button>
+        <button class="tab" data-tab="accountsView" aria-label="Accounts" title="Accounts">
+          <svg><use href="#icon-wallet"></use></svg>
+        </button>
+        <button class="tab" data-tab="portfolioView" aria-label="Portfolio" title="Portfolio">
+          <svg><use href="#icon-portfolio"></use></svg>
+        </button>
+        <button class="tab" data-tab="analysisView" aria-label="Analysis" title="Analysis">
+          <svg><use href="#icon-analysis"></use></svg>
+        </button>
+        <button class="tab" data-tab="chatView" aria-label="Chat" title="Chat">
+          <svg><use href="#icon-chat"></use></svg>
+        </button>
+      </nav>
+    </div>
+
+    <div class="lock-screen" id="lockScreen">
+      <div class="lock-card">
+        <p class="eyebrow">deepakbaby.in private</p>
+        <h2>Sign In</h2>
+        <p class="muted">Your tracker now syncs with the private backend. Use your balance tracker account to unlock it.</p>
+        <form id="pinForm">
+          <input id="usernameInput" autocomplete="username" placeholder="Username" value="deepak" required />
+          <input id="pinInput" autocomplete="current-password" type="password" placeholder="Password" required />
+          <button type="submit">Sign in</button>
+        </form>
+      </div>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
