@@ -6,15 +6,20 @@ import json
 import os
 import re
 import secrets
-import sqlite3
 import time
+import psycopg2
+import psycopg2.extras
+from contextlib import contextmanager
 from http import cookies
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
+import urllib.request
+import urllib.error
 
 ROOT = Path(__file__).resolve().parents[1]
-DB_PATH = Path(os.environ.get("BALANCE_DB", ROOT / "db" / "balance.sqlite3"))
+ENVIRONMENT = os.environ.get("ENVIRONMENT", "development")
+DB_URL = os.environ.get("DATABASE_URL", "postgresql://deepak:mysecretpassword@localhost:5432/balance_db")
 HOST = os.environ.get("BALANCE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("BALANCE_PORT", "8787"))
 APP_USER = os.environ.get("BALANCE_USER", "deepak")
@@ -23,68 +28,35 @@ SESSION_SECRET = os.environ.get("BALANCE_SESSION_SECRET", "dev-secret-change-me"
 SESSION_TTL = 60 * 60 * 24 * 14
 ALLOWED_ORIGIN = os.environ.get("BALANCE_ALLOWED_ORIGIN", "http://localhost:4173")
 
+# Extreme rate limit logic
+FAILED_LOGINS = {}
 
-def db():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+@contextmanager
+def db_cursor():
+    conn = psycopg2.connect(DB_URL, cursor_factory=psycopg2.extras.DictCursor)
+    try:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            yield cur
+    finally:
+        conn.close()
 
 
 def init_db():
-    with db() as conn:
-        conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-              id INTEGER PRIMARY KEY,
-              username TEXT UNIQUE NOT NULL,
-              password_hash TEXT NOT NULL,
-              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS accounts (
-              id INTEGER PRIMARY KEY,
-              name TEXT UNIQUE NOT NULL,
-              balance REAL NOT NULL DEFAULT 0,
-              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS transactions (
-              id INTEGER PRIMARY KEY,
-              account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-              amount REAL NOT NULL,
-              category TEXT NOT NULL,
-              note TEXT NOT NULL,
-              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS holdings (
-              id INTEGER PRIMARY KEY,
-              symbol TEXT UNIQUE NOT NULL,
-              quantity REAL NOT NULL,
-              cost REAL NOT NULL,
-              price REAL NOT NULL,
-              last_price_at TEXT,
-              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-
-            CREATE TABLE IF NOT EXISTS chat_messages (
-              id INTEGER PRIMARY KEY,
-              role TEXT NOT NULL,
-              text TEXT NOT NULL,
-              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-            );
-            """
-        )
-        existing = conn.execute("SELECT id FROM users WHERE username = ?", (APP_USER,)).fetchone()
-        if not existing:
-            conn.execute(
-                "INSERT INTO users (username, password_hash) VALUES (?, ?)",
-                (APP_USER, hash_password(APP_PASSWORD)),
-            )
-        if not conn.execute("SELECT id FROM accounts LIMIT 1").fetchone():
-            conn.executemany("INSERT INTO accounts (name, balance) VALUES (?, ?)", [("account1", 0), ("account2", 0)])
+    try:
+        with db_cursor() as cur:
+            cur.execute("SELECT id FROM users WHERE username = %s", (APP_USER,))
+            if not cur.fetchone():
+                cur.execute(
+                    "INSERT INTO users (username, password_hash) VALUES (%s, %s)",
+                    (APP_USER, hash_password(APP_PASSWORD)),
+                )
+            cur.execute("SELECT id FROM accounts LIMIT 1")
+            if not cur.fetchone():
+                cur.execute("INSERT INTO accounts (name, balance) VALUES (%s, %s), (%s, %s)", 
+                           ("account1", 0, "account2", 0))
+    except psycopg2.errors.UndefinedTable:
+        print("Database not migrated yet. Please run python3 api/migrate.py first.")
 
 
 def hash_password(password):
@@ -148,78 +120,107 @@ def category_for(note, is_out):
     return "spending"
 
 
-def find_or_create_account(conn, name):
+def find_or_create_account(cur, name):
     clean = re.sub(r"\s+", " ", name).strip()
-    row = conn.execute("SELECT * FROM accounts WHERE lower(name) = lower(?)", (clean,)).fetchone()
+    cur.execute("SELECT * FROM accounts WHERE lower(name) = lower(%s)", (clean,))
+    row = cur.fetchone()
     if row:
         return dict(row)
-    cursor = conn.execute("INSERT INTO accounts (name, balance) VALUES (?, 0)", (clean,))
-    return dict(conn.execute("SELECT * FROM accounts WHERE id = ?", (cursor.lastrowid,)).fetchone())
+    cur.execute("INSERT INTO accounts (name, balance) VALUES (%s, 0) RETURNING *", (clean,))
+    return dict(cur.fetchone())
 
 
-def upsert_holding(conn, symbol, quantity, cost, price):
-    existing = conn.execute("SELECT * FROM holdings WHERE symbol = ?", (symbol,)).fetchone()
+def upsert_holding(cur, symbol, quantity, cost, price):
+    cur.execute("SELECT * FROM holdings WHERE symbol = %s", (symbol,))
+    existing = cur.fetchone()
     if existing:
-        total_qty = existing["quantity"] + quantity
-        avg_cost = ((existing["quantity"] * existing["cost"]) + (quantity * cost)) / total_qty
-        conn.execute(
-            "UPDATE holdings SET quantity = ?, cost = ?, price = ? WHERE id = ?",
+        total_qty = float(existing["quantity"]) + quantity
+        avg_cost = ((float(existing["quantity"]) * float(existing["cost"])) + (quantity * cost)) / total_qty if total_qty > 0 else 0
+        cur.execute(
+            "UPDATE holdings SET quantity = %s, cost = %s, price = %s WHERE id = %s",
             (total_qty, avg_cost, price, existing["id"]),
         )
     else:
-        conn.execute(
-            "INSERT INTO holdings (symbol, quantity, cost, price) VALUES (?, ?, ?, ?)",
+        cur.execute(
+            "INSERT INTO holdings (symbol, quantity, cost, price) VALUES (%s, %s, %s, %s)",
             (symbol, quantity, cost, price),
         )
 
 
 def handle_chat_command(text):
+    with db_cursor() as cur:
+        cur.execute("INSERT INTO chat_messages (role, text) VALUES (%s, %s)", ("user", text))
+    
+    try:
+        req = urllib.request.Request("http://127.0.0.1:3001/chat", data=json.dumps({"message": text}).encode(), headers={'Content-Type': 'application/json'})
+        response = urllib.request.urlopen(req, timeout=3)
+        agent_resp = json.loads(response.read().decode())
+    except Exception:
+        agent_resp = mock_openclaw_response(text)
+        
+    action = agent_resp.get("action", "query")
+    requires_confirmation = agent_resp.get("requires_confirmation", False)
+    payload = json.dumps(agent_resp)
+
+    with db_cursor() as cur:
+        cur.execute("INSERT INTO agent_actions (action_type, payload_json, status) VALUES (%s, %s, %s) RETURNING id", 
+                              (action, payload, "pending" if requires_confirmation else "executed"))
+        action_id = cur.fetchone()["id"]
+        
+        reply_text = agent_resp.get("replyText", "")
+        if requires_confirmation:
+            if not reply_text:
+                reply_text = f"Do you confirm this {action}?"
+        else:
+            execute_agent_action(cur, action, agent_resp)
+            if not reply_text:
+                 reply_text = f"Action {action} completed."
+            action_id = None
+                 
+        cur.execute("INSERT INTO chat_messages (role, text, action_id) VALUES (%s, %s, %s)", ("agent", reply_text, action_id))
+        return {"reply": reply_text, "requires_confirmation": requires_confirmation, "action_id": action_id}
+
+def execute_agent_action(cur, action, payload):
+    if action == "create_transaction":
+        account = find_or_create_account(cur, payload.get("account", "account1"))
+        amount = float(payload.get("amount", 0))
+        is_out = payload.get("type", "withdrawal") == "withdrawal"
+        signed_amount = -amount if is_out else amount
+        cur.execute("UPDATE accounts SET balance = balance + %s WHERE id = %s", (signed_amount, account["id"]))
+        cur.execute(
+            "INSERT INTO transactions (account_id, amount, category, note) VALUES (%s, %s, %s, %s)",
+            (account["id"], signed_amount, payload.get("category", "manual"), payload.get("note", ""))
+        )
+    elif action == "update_holding":
+        upsert_holding(cur, payload.get("symbol", "").upper(), float(payload.get("quantity", 0)), float(payload.get("cost", 0)), float(payload.get("price", 0)))
+
+def mock_openclaw_response(text):
     normalized = text.strip().lower()
     tx_match = re.search(
         r"\b(added|add|deposit|deposited|withdraw|withdrew|spent|paid|remove|removed)\b\s+€?([0-9]+(?:\.[0-9]+)?)\s+(?:to|from|in|into)?\s*([a-z0-9 _-]+?)(?:\s+for\s+(.+))?$",
-        normalized,
-        re.I,
+        normalized, re.I
     )
-    with db() as conn:
-        conn.execute("INSERT INTO chat_messages (role, text) VALUES (?, ?)", ("user", text))
-        if tx_match:
-            verb, raw_amount, account_name, note = tx_match.groups()
-            is_out = verb in ["withdraw", "withdrew", "spent", "paid", "remove", "removed"]
-            amount = float(raw_amount)
-            signed_amount = -amount if is_out else amount
-            account = find_or_create_account(conn, account_name)
-            conn.execute("UPDATE accounts SET balance = balance + ? WHERE id = ?", (signed_amount, account["id"]))
-            conn.execute(
-                "INSERT INTO transactions (account_id, amount, category, note) VALUES (?, ?, ?, ?)",
-                (account["id"], signed_amount, category_for(note or verb, is_out), note or verb),
-            )
-            updated = conn.execute("SELECT * FROM accounts WHERE id = ?", (account["id"],)).fetchone()
-            reply = f"{'Withdrew' if is_out else 'Added'} {money(amount)} {'from' if is_out else 'to'} {updated['name']}. New balance: {money(updated['balance'])}."
-        else:
-            holding_match = re.search(
-                r"\b(bought|buy|holding|own)\b\s+([0-9]+(?:\.[0-9]+)?)\s+([a-z.]+)\s+(?:at|for)\s+€?([0-9]+(?:\.[0-9]+)?)(?:\s+now\s+€?([0-9]+(?:\.[0-9]+)?))?",
-                normalized,
-                re.I,
-            )
-            if holding_match:
-                _, qty, symbol, cost, price = holding_match.groups()
-                quantity = float(qty)
-                current_price = float(price or cost)
-                upsert_holding(conn, symbol.upper(), quantity, float(cost), current_price)
-                reply = f"Added {quantity:g} {symbol.upper()}. Current value: {money(quantity * current_price)}."
-            elif "net worth" in normalized:
-                totals = get_totals(conn)
-                reply = f"Your current net worth is {money(totals['net_worth'])}: {money(totals['cash'])} cash and {money(totals['portfolio'])} portfolio."
-            else:
-                reply = "I can log deposits, withdrawals, and holdings. Try: withdraw 200 from account2 for renovation."
-        conn.execute("INSERT INTO chat_messages (role, text) VALUES (?, ?)", ("agent", reply))
-        return reply
+    if tx_match:
+        verb, raw_amount, account_name, note = tx_match.groups()
+        amt = float(raw_amount)
+        is_out = verb in ["withdraw", "withdrew", "spent", "paid", "remove", "removed"]
+        cat = category_for(note or verb, is_out)
+        return {
+            "action": "create_transaction", "account": account_name, "amount": amt,
+            "type": "withdrawal" if is_out else "deposit", "category": cat, "note": note or verb,
+            "requires_confirmation": amt > 5000,
+            "replyText": f"Staged withdrawal of €{amt} for {cat}. Please confirm." if amt > 5000 else f"Automatically recorded {amt} for {note or verb}."
+        }
+    return {"action": "query", "replyText": "I couldn't parse that reliably. Please use standard phrases like 'added 100 to account1'."}
 
 
-def get_totals(conn):
-    cash = conn.execute("SELECT COALESCE(SUM(balance), 0) value FROM accounts").fetchone()["value"]
-    portfolio = conn.execute("SELECT COALESCE(SUM(quantity * price), 0) value FROM holdings").fetchone()["value"]
-    cost = conn.execute("SELECT COALESCE(SUM(quantity * cost), 0) value FROM holdings").fetchone()["value"]
+def get_totals(cur):
+    cur.execute("SELECT COALESCE(SUM(balance), 0) value FROM accounts WHERE deleted_at IS NULL")
+    cash = float(cur.fetchone()["value"])
+    cur.execute("SELECT COALESCE(SUM(quantity * price), 0) value FROM holdings WHERE deleted_at IS NULL")
+    portfolio = float(cur.fetchone()["value"])
+    cur.execute("SELECT COALESCE(SUM(quantity * cost), 0) value FROM holdings WHERE deleted_at IS NULL")
+    cost = float(cur.fetchone()["value"])
     return {"cash": cash, "portfolio": portfolio, "cost": cost, "pnl": portfolio - cost, "net_worth": cash + portfolio}
 
 
@@ -232,46 +233,106 @@ class Handler(BaseHTTPRequestHandler):
         if not self.require_auth():
             return
         route = urlparse(self.path).path
-        with db() as conn:
+        with db_cursor() as cur:
             if route == "/api/me":
                 return self.json({"user": APP_USER})
             if route == "/api/summary":
-                return self.json(get_totals(conn))
+                return self.json(get_totals(cur))
             if route == "/api/accounts":
-                rows = conn.execute("SELECT * FROM accounts ORDER BY name").fetchall()
-                return self.json(rows_to_dicts(rows))
+                cur.execute("SELECT * FROM accounts WHERE deleted_at IS NULL ORDER BY name")
+                return self.json(rows_to_dicts(cur.fetchall()))
             if route == "/api/transactions":
-                rows = conn.execute(
-                    "SELECT t.*, a.name account_name FROM transactions t JOIN accounts a ON a.id = t.account_id ORDER BY t.created_at DESC, t.id DESC LIMIT 200"
-                ).fetchall()
-                return self.json(rows_to_dicts(rows))
+                cur.execute(
+                    "SELECT t.*, a.name account_name FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE t.deleted_at IS NULL AND a.deleted_at IS NULL ORDER BY t.created_at DESC LIMIT 200"
+                )
+                
+                def stringify_ids(row): # JSON handles UUID conversions weirdly, so stringify all UUIDs
+                    d = dict(row)
+                    for k,v in d.items():
+                        if k.endswith("id") and v is not None: d[k] = str(v)
+                        if k == "amount" or k == "balance" or k == "quantity" or k == "cost" or k == "price": d[k] = float(d[k] if d[k] is not None else 0)
+                        if "at" in k and v: d[k] = str(v)
+                    return d
+                return self.json([stringify_ids(r) for r in cur.fetchall()])
             if route == "/api/holdings":
-                rows = conn.execute("SELECT * FROM holdings ORDER BY symbol").fetchall()
-                return self.json(rows_to_dicts(rows))
+                cur.execute("SELECT * FROM holdings WHERE deleted_at IS NULL ORDER BY symbol")
+                
+                def stringify_h(row):
+                    d = dict(row)
+                    d["id"] = str(d["id"])
+                    for field in ["quantity", "cost", "price"]: d[field] = float(d[field])
+                    if d.get("created_at"): d["created_at"] = str(d["created_at"])
+                    if d.get("last_price_at"): d["last_price_at"] = str(d["last_price_at"])
+                    return d
+                return self.json([stringify_h(r) for r in cur.fetchall()])
+            if route == "/api/analysis":
+                cur.execute("""
+                    SELECT COALESCE(SUM(amount), 0) as total, category
+                    FROM transactions 
+                    WHERE deleted_at IS NULL AND created_at > CURRENT_DATE - INTERVAL '30 days'
+                    GROUP BY category
+                """)
+                rows = cur.fetchall()
+                inflow = sum(r['total'] for r in rows if r['total'] > 0)
+                outflow = abs(sum(r['total'] for r in rows if r['total'] < 0))
+                savings_rate = ((inflow - outflow) / inflow * 100) if inflow > 0 else 0
+                
+                cur.execute("SELECT COALESCE(SUM(balance), 0) value FROM accounts WHERE deleted_at IS NULL")
+                cash = float(cur.fetchone()["value"])
+                runway = round(cash / outflow, 1) if outflow > 0 else 999
+                
+                return self.json({
+                    "thirty_day_inflow": float(inflow),
+                    "thirty_day_outflow": float(outflow),
+                    "savings_rate_pct": float(savings_rate),
+                    "runway_months": float(runway),
+                    "categories": {r['category']: float(r['total']) for r in rows}
+                })
             if route == "/api/chat":
-                rows = conn.execute("SELECT * FROM chat_messages ORDER BY id DESC LIMIT 100").fetchall()
-                return self.json(list(reversed(rows_to_dicts(rows))))
+                cur.execute("SELECT * FROM chat_messages ORDER BY created_at DESC LIMIT 100")
+                chats = rows_to_dicts(cur.fetchall())
+                for c in chats:
+                    c["id"] = str(c["id"])
+                    if c.get("created_at"): c["created_at"] = str(c["created_at"])
+                    if c.get("action_id"):
+                        c["action_id"] = str(c["action_id"])
+                        cur.execute("SELECT * FROM agent_actions WHERE id = %s", (c["action_id"],))
+                        action = cur.fetchone()
+                        c["action_status"] = action["status"] if action else "unknown"
+                return self.json(list(reversed(chats)))
         self.not_found()
 
     def do_POST(self):
         route = urlparse(self.path).path
         if route == "/api/login":
             body = self.body()
-            with db() as conn:
-                row = conn.execute("SELECT * FROM users WHERE username = ?", (body.get("username"),)).fetchone()
+            with db_cursor() as cur:
+                cur.execute("SELECT * FROM users WHERE username = %s", (body.get("username"),))
+                row = cur.fetchone()
+                
+                req_ip = self.client_address[0]
+                if FAILED_LOGINS.get(req_ip, 0) > 5:
+                    return self.json({"error": "Too many failed attempts. Locked."}, 429)
+
                 if row and verify_password(body.get("password", ""), row["password_hash"]):
                     token = sign_session(row["username"])
+                    FAILED_LOGINS[req_ip] = 0
                     self.send_response(200)
-                    self.send_header("Set-Cookie", f"balance_session={token}; HttpOnly; SameSite=Lax; Path=/; Max-Age={SESSION_TTL}")
+                    cookie_str = f"balance_session={token}; HttpOnly; SameSite=Lax; Path=/; Max-Age={SESSION_TTL}"
+                    if ENVIRONMENT == "production": cookie_str += "; Secure"
+                    self.send_header("Set-Cookie", cookie_str)
                     self.send_headers()
                     self.wfile.write(json.dumps({"ok": True}).encode())
                     return
+                else:
+                    FAILED_LOGINS[req_ip] = FAILED_LOGINS.get(req_ip, 0) + 1
+                    
             return self.json({"error": "Invalid login"}, 401)
         if not self.require_auth():
             return
         body = self.body()
         route = urlparse(self.path).path
-        with db() as conn:
+        with db_cursor() as cur:
             if route == "/api/logout":
                 self.send_response(200)
                 self.send_header("Set-Cookie", "balance_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0")
@@ -279,30 +340,108 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"ok": True}).encode())
                 return
             if route == "/api/accounts":
-                conn.execute("INSERT INTO accounts (name, balance) VALUES (?, ?)", (body["name"], float(body.get("balance", 0))))
+                cur.execute("INSERT INTO accounts (name, balance) VALUES (%s, %s)", (body["name"], float(body.get("balance", 0))))
                 return self.json({"ok": True}, 201)
             if route == "/api/transactions":
-                account = find_or_create_account(conn, body["account"])
+                account = find_or_create_account(cur, body["account"])
                 amount = float(body["amount"])
-                conn.execute("UPDATE accounts SET balance = balance + ? WHERE id = ?", (amount, account["id"]))
-                conn.execute(
-                    "INSERT INTO transactions (account_id, amount, category, note) VALUES (?, ?, ?, ?)",
+                cur.execute("UPDATE accounts SET balance = balance + %s WHERE id = %s", (amount, account["id"]))
+                cur.execute(
+                    "INSERT INTO transactions (account_id, amount, category, note) VALUES (%s, %s, %s, %s)",
                     (account["id"], amount, body.get("category", "manual"), body.get("note", "manual")),
                 )
                 return self.json({"ok": True}, 201)
             if route == "/api/holdings":
-                upsert_holding(conn, body["symbol"].upper(), float(body["quantity"]), float(body["cost"]), float(body["price"]))
+                upsert_holding(cur, body["symbol"].upper(), float(body["quantity"]), float(body["cost"]), float(body["price"]))
                 return self.json({"ok": True}, 201)
             if route == "/api/prices":
                 for item in body.get("prices", []):
-                    conn.execute(
-                        "UPDATE holdings SET price = ?, last_price_at = CURRENT_TIMESTAMP WHERE symbol = ?",
+                    cur.execute(
+                        "UPDATE holdings SET price = %s, last_price_at = CURRENT_TIMESTAMP WHERE symbol = %s",
                         (float(item["price"]), item["symbol"].upper()),
                     )
                 return self.json({"ok": True})
             if route == "/api/chat":
-                reply = handle_chat_command(body.get("message", ""))
-                return self.json({"reply": reply})
+                result = handle_chat_command(body.get("message", ""))
+                return self.json(result)
+            if route.startswith("/api/agent/confirm/"):
+                parts = route.rstrip('/').split('/')
+                item_id = parts[4]
+                
+                cur.execute("SELECT * FROM agent_actions WHERE id = %s", (item_id,))
+                action = cur.fetchone()
+                if not action or action["status"] != "pending":
+                    return self.json({"error": "Action invalid or already processed"}, 400)
+                
+                cur.execute("UPDATE agent_actions SET status = 'executed' WHERE id = %s", (item_id,))
+                execute_agent_action(cur, action["action_type"], json.loads(action["payload_json"]))
+                cur.execute("UPDATE chat_messages SET action_id = NULL WHERE action_id = %s", (item_id,))
+                cur.execute("INSERT INTO chat_messages (role, text) VALUES (%s, %s)", ("agent", "Action confirmed and executed."))
+                return self.json({"ok": True})
+            if route.startswith("/api/agent/cancel/"):
+                parts = route.rstrip('/').split('/')
+                item_id = parts[4]
+                cur.execute("UPDATE agent_actions SET status = 'cancelled' WHERE id = %s", (item_id,))
+                cur.execute("UPDATE chat_messages SET action_id = NULL WHERE action_id = %s", (item_id,))
+                cur.execute("INSERT INTO chat_messages (role, text) VALUES (%s, %s)", ("agent", "Action cancelled."))
+                return self.json({"ok": True})
+        self.not_found()
+
+    def do_PUT(self):
+        if not self.require_auth():
+            return
+        route = urlparse(self.path).path
+        body = self.body()
+        parts = route.rstrip('/').split('/')
+        if len(parts) == 4 and parts[1] == 'api':
+            resource = parts[2]
+            item_id = parts[3]
+            
+            with db_cursor() as cur:
+                if resource == 'accounts':
+                    cur.execute("UPDATE accounts SET name = %s, balance = %s WHERE id = %s", 
+                                (body['name'], float(body.get('balance', 0)), item_id))
+                    return self.json({"ok": True})
+                elif resource == 'holdings':
+                    cur.execute("UPDATE holdings SET symbol = %s, quantity = %s, cost = %s, price = %s WHERE id = %s", 
+                        (body['symbol'].upper(), float(body['quantity']), float(body['cost']), float(body['price']), item_id))
+                    return self.json({"ok": True})
+                elif resource == 'transactions':
+                    account = find_or_create_account(cur, body["account"])
+                    amount = float(body["amount"])
+                    cur.execute("SELECT * FROM transactions WHERE id = %s", (item_id,))
+                    old_tx = cur.fetchone()
+                    if old_tx:
+                        cur.execute("UPDATE accounts SET balance = balance - %s WHERE id = %s", (float(old_tx["amount"]), old_tx["account_id"]))
+                    cur.execute("UPDATE accounts SET balance = balance + %s WHERE id = %s", (amount, account["id"]))
+                    cur.execute("UPDATE transactions SET account_id = %s, amount = %s, category = %s, note = %s WHERE id = %s",
+                        (account["id"], amount, body.get("category", "manual"), body.get("note", "manual"), item_id))
+                    return self.json({"ok": True})
+        self.not_found()
+
+    def do_DELETE(self):
+        if not self.require_auth():
+            return
+        route = urlparse(self.path).path
+        parts = route.rstrip('/').split('/')
+        if len(parts) == 4 and parts[1] == 'api':
+            resource = parts[2]
+            item_id = parts[3]
+
+            with db_cursor() as cur:
+                if resource == 'accounts':
+                    cur.execute("UPDATE accounts SET deleted_at = CURRENT_TIMESTAMP WHERE id = %s", (item_id,))
+                    return self.json({"ok": True})
+                elif resource == 'holdings':
+                    cur.execute("UPDATE holdings SET deleted_at = CURRENT_TIMESTAMP WHERE id = %s", (item_id,))
+                    return self.json({"ok": True})
+                elif resource == 'transactions':
+                    cur.execute("SELECT * FROM transactions WHERE id = %s AND deleted_at IS NULL", (item_id,))
+                    old_tx = cur.fetchone()
+                    if old_tx:
+                        cur.execute("UPDATE accounts SET balance = balance - %s WHERE id = %s", (float(old_tx["amount"]), old_tx["account_id"]))
+                        cur.execute("UPDATE transactions SET deleted_at = CURRENT_TIMESTAMP WHERE id = %s", (item_id,))
+                    return self.json({"ok": True})
         self.not_found()
 
     def body(self):
@@ -326,19 +465,26 @@ class Handler(BaseHTTPRequestHandler):
     def json(self, data, status=200):
         self.send_response(status)
         self.send_headers()
-        self.wfile.write(json.dumps(data).encode())
+        payload = json.dumps(data) if data is not None else "{}"
+        self.wfile.write(payload.encode('utf-8'))
 
     def send_headers(self):
         origin = self.headers.get("Origin")
         if origin == ALLOWED_ORIGIN:
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Access-Control-Allow-Credentials", "true")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type")
             self.send_header("Vary", "Origin")
+        
+        # Comprehensive Phase 3 Security Rules
         self.send_header("Content-Type", "application/json")
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
         self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
+        self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         self.end_headers()
 
     def not_found(self):
@@ -346,6 +492,15 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    if ENVIRONMENT == "production":
+        print("Initializing Production Guardrails...")
+        if "change-me" in APP_PASSWORD:
+            print("FATAL: APP_PASSWORD is still set to the default 'change-me' in production!")
+            os._exit(1)
+        if "change-me" in SESSION_SECRET.decode():
+            print("FATAL: BALANCE_SESSION_SECRET is still set to a dev-secret in production!")
+            os._exit(1)
+            
     init_db()
     print(f"Balance API listening on http://{HOST}:{PORT}")
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

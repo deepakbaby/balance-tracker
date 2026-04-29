@@ -35,5 +35,14 @@ CREATE TABLE chat_messages (
   id INTEGER PRIMARY KEY,
   role TEXT NOT NULL,
   text TEXT NOT NULL,
+  action_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE agent_actions (
+  id INTEGER PRIMARY KEY,
+  action_type TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

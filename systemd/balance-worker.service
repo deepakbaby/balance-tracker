@@ -1,0 +1,20 @@
+[Unit]
+Description=Balance Tracker Financial Daemon (Prices)
+After=network.target postgresql.service balance-api.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=www-data
+WorkingDirectory=/opt/apps/balance-tracker
+EnvironmentFile=/opt/apps/balance-tracker/.env
+ExecStart=/usr/bin/python3 api/price_worker.py
+Restart=always
+RestartSec=60
+
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

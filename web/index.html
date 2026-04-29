@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div id="globalLoader"></div>
+    <div id="toastContainer"></div>
     <svg class="sprite" aria-hidden="true">
       <symbol id="icon-home" viewBox="0 0 24 24">
         <path d="M3 11.5 12 4l9 7.5" />
@@ -41,7 +43,15 @@
           <p class="eyebrow">Private tracker</p>
           <h1>Balance</h1>
         </div>
-        <button class="icon-button" id="lockButton" aria-label="Lock app" title="Lock app">Lock</button>
+        <div class="button-row">
+          <select id="currencySelector" class="text-button" style="padding: 0 10px; font-weight: bold; width: auto; min-height: 36px; border-radius: 8px;">
+            <option value="EUR">EUR</option>
+            <option value="USD">USD</option>
+            <option value="GBP">GBP</option>
+            <option value="INR">INR</option>
+          </select>
+          <button class="icon-button" id="lockButton" aria-label="Lock app" title="Lock app" style="min-height: 36px; padding: 0 10px; border-radius: 8px;">Lock</button>
+        </div>
       </header>
 
       <main>
@@ -79,7 +89,10 @@
           <section class="panel">
             <div class="section-head">
               <h2>Recent Activity</h2>
-              <button class="text-button" data-tab="chatView">Add</button>
+              <div class="button-row">
+                <button class="text-button" id="addTxBtn">Manual</button>
+                <button class="text-button" data-tab="chatView">Chat</button>
+              </div>
             </div>
             <div class="activity-list" id="activityList"></div>
           </section>
@@ -235,8 +248,82 @@
         <form id="pinForm">
           <input id="usernameInput" autocomplete="username" placeholder="Username" value="deepak" required />
           <input id="pinInput" autocomplete="current-password" type="password" placeholder="Password" required />
-          <button type="submit">Sign in</button>
+          <button type="submit" class="primary">Sign in</button>
         </form>
+      </div>
+    </div>
+
+    <!-- Account Detail View -->
+    <section class="detail-view" id="accountDetailView">
+      <div class="detail-nav">
+        <button id="closeAccountDetail" aria-label="Back">Back</button>
+        <h2 id="accountDetailTitle">Account Detail</h2>
+      </div>
+      <div class="metric-grid">
+        <article class="metric">
+          <span>Current Balance</span>
+          <strong id="accountDetailBalance">EUR 0</strong>
+        </article>
+        <article class="metric">
+          <span>Monthly Net</span>
+          <strong id="accountDetailNet">EUR 0</strong>
+        </article>
+      </div>
+      <div class="section-head tall">
+        <h2>Transactions</h2>
+      </div>
+      <div class="activity-list" id="accountDetailTxList"></div>
+    </section>
+
+    <!-- Holding Detail View -->
+    <section class="detail-view" id="holdingDetailView">
+      <div class="detail-nav">
+        <button id="closeHoldingDetail" aria-label="Back">Back</button>
+        <h2 id="holdingDetailTitle">Holding Detail</h2>
+      </div>
+      <article class="portfolio-hero">
+        <span>Current Value</span>
+        <strong id="holdingDetailValue">EUR 0</strong>
+        <small id="holdingDetailPnl">EUR 0</small>
+        <em id="holdingDetailPriceDate">Manual</em>
+      </article>
+      <div class="metric-grid">
+        <article class="metric">
+          <span>Quantity</span>
+          <strong id="holdingDetailQty">0</strong>
+        </article>
+        <article class="metric">
+          <span>Current Price</span>
+          <strong id="holdingDetailPrice">0</strong>
+        </article>
+        <article class="metric">
+          <span>Avg Cost</span>
+          <strong id="holdingDetailCost">0</strong>
+        </article>
+      </div>
+      <form class="inline-form" id="updatePriceForm" style="margin-top: 20px;">
+        <input id="newPriceInput" type="number" step="0.01" placeholder="New price" required />
+        <button type="submit">Update Price</button>
+      </form>
+    </section>
+
+    <!-- Modals -->
+    <div class="modal-backdrop" id="modalBackdrop">
+      <div class="modal" id="editModal" aria-modal="true" role="dialog">
+        <div class="modal-header">
+          <h2 id="modalTitle">Edit</h2>
+          <button class="close-btn" id="modalCloseBtn" aria-label="Close">×</button>
+        </div>
+        <div class="modal-body">
+          <form id="genericForm">
+            <div id="modalFormFields"></div>
+            <div class="modal-actions">
+              <button type="button" class="text-button" id="modalCancelBtn">Cancel</button>
+              <button type="button" class="text-button" id="modalDeleteBtn" style="color: var(--danger); border-color: var(--danger);">Delete</button>
+              <button type="submit" class="primary">Save Changes</button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
 

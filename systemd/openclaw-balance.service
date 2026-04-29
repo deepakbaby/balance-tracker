@@ -1,0 +1,20 @@
+[Unit]
+Description=OpenClaw Balance Agent
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/apps/balance-tracker/openclaw
+EnvironmentFile=/opt/apps/balance-tracker/openclaw/.env
+ExecStart=/usr/local/bin/openclaw start
+Restart=on-failure
+RestartSec=5
+
+# Restrict permissions
+ProtectSystem=full
+ProtectHome=read-only
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

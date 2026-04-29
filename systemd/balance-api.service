@@ -1,0 +1,26 @@
+[Unit]
+Description=Balance Tracker API Server (Python)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=www-data
+WorkingDirectory=/opt/apps/balance-tracker
+
+# Injects database and environment variables safely without leaking to Shell scopes
+EnvironmentFile=/opt/apps/balance-tracker/.env
+
+ExecStart=/usr/bin/python3 api/server.py
+
+# Resiliency constraints
+Restart=on-failure
+RestartSec=5
+
+# File system hardening constraints against system writes
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
