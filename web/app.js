@@ -106,7 +106,17 @@ async function api(path, options = {}) {
       showLock();
       throw new Error("Unauthorized");
     }
-    const data = await response.json();
+    const contentType = response.headers.get("content-type") || "";
+    const raw = await response.text();
+    let data = {};
+    if (raw && contentType.includes("application/json")) {
+      data = JSON.parse(raw);
+    } else if (raw) {
+      const message = response.ok
+        ? `${path} returned HTML instead of JSON. Check the API proxy/backend deployment.`
+        : `${path} returned ${response.status} ${response.statusText}`;
+      throw new Error(message);
+    }
     if (!response.ok) throw new Error(data.error || "API request failed");
     return data;
   } catch (err) {
@@ -126,7 +136,12 @@ async function api(path, options = {}) {
 
 async function loadServerState() {
   const [accounts, transactions, holdings, chats, analysis, portfolio] = await Promise.all([
-    api("/api/accounts"), api("/api/transactions"), api("/api/holdings"), api("/api/chat"), api("/api/analysis"), api("/api/portfolio")
+    api("/api/accounts"),
+    api("/api/transactions"),
+    api("/api/holdings"),
+    api("/api/chat"),
+    api("/api/analysis"),
+    api("/api/portfolio").catch(() => ({ cash: 0, events: [] }))
   ]);
   state.accounts = accounts.map(a => ({ id: a.id, name: a.name, balance: Number(a.balance || 0), createdAt: a.created_at }));
   state.transactions = transactions.map(tx => ({
