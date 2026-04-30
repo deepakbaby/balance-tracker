@@ -13,9 +13,12 @@ from contextlib import contextmanager
 from http import cookies
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import uuid
+import datetime
 from urllib.parse import urlparse
 import urllib.request
 import urllib.error
+import decimal
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -114,7 +117,18 @@ def verify_session(token):
 
 
 def rows_to_dicts(rows):
-    return [dict(row) for row in rows]
+    res = []
+    for row in rows:
+        d = dict(row)
+        for k, v in d.items():
+            if isinstance(v, uuid.UUID):
+                d[k] = str(v)
+            if isinstance(v, datetime.datetime):
+                d[k] = str(v)
+            if isinstance(v, decimal.Decimal):
+                d[k] = float(v)
+        res.append(d)
+    return res
 
 
 def money(value):
@@ -252,21 +266,13 @@ class Handler(BaseHTTPRequestHandler):
             if route == "/api/summary":
                 return self.json(get_totals(cur))
             if route == "/api/accounts":
-                cur.execute("SELECT * FROM accounts WHERE deleted_at IS NULL ORDER BY name")
+                cur.execute("SELECT * FROM accounts WHERE deleted_at IS NULL ORDER BY balance DESC")
                 return self.json(rows_to_dicts(cur.fetchall()))
             if route == "/api/transactions":
                 cur.execute(
                     "SELECT t.*, a.name account_name FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE t.deleted_at IS NULL AND a.deleted_at IS NULL ORDER BY t.created_at DESC LIMIT 200"
                 )
-                
-                def stringify_ids(row): # JSON handles UUID conversions weirdly, so stringify all UUIDs
-                    d = dict(row)
-                    for k,v in d.items():
-                        if k.endswith("id") and v is not None: d[k] = str(v)
-                        if k == "amount" or k == "balance" or k == "quantity" or k == "cost" or k == "price": d[k] = float(d[k] if d[k] is not None else 0)
-                        if "at" in k and v: d[k] = str(v)
-                    return d
-                return self.json([stringify_ids(r) for r in cur.fetchall()])
+                return self.json(rows_to_dicts(cur.fetchall()))
             if route == "/api/holdings":
                 cur.execute("SELECT * FROM holdings WHERE deleted_at IS NULL ORDER BY symbol")
                 
