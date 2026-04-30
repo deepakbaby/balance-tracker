@@ -1,5 +1,5 @@
 const STORAGE_KEY = "deepak.balance-tracker.snapshots.v1";
-const API_BASE = localStorage.getItem("balance-api-base") || "http://localhost:8787";
+const API_BASE = localStorage.getItem("balance-api-base") || (location.hostname === "localhost" ? "http://localhost:8787" : "");
 const CURRENCY = localStorage.getItem("balance-currency") || "EUR";
 const CRYPTO_IDS = {
   BTC: "bitcoin", ETH: "ethereum", SOL: "solana", ADA: "cardano",
