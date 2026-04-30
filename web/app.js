@@ -17,7 +17,7 @@ const ACCOUNT_COLORS = [
 
 const seedState = {
   accounts: [], transactions: [], holdings: [], portfolioCash: 0, portfolioEvents: [],
-  chats: [{ id: crypto.randomUUID(), role: "agent", text: "Ready. Try: added 1500 to account1, withdraw 200 from account2 for renovation, or bought 2 AAPL at 170 now 190.", createdAt: new Date().toISOString() }],
+  chats: [{ id: crypto.randomUUID(), role: "agent", text: "Ready.", createdAt: new Date().toISOString() }],
   snapshots: []
 };
 
@@ -53,6 +53,9 @@ const els = {
   savingsRate: document.querySelector("#savingsRate"),
   runwayMonths: document.querySelector("#runwayMonths"),
   portfolioProfit: document.querySelector("#portfolioProfit"),
+  investedShare: document.querySelector("#investedShare"),
+  topHolding: document.querySelector("#topHolding"),
+  worthMove: document.querySelector("#worthMove"),
   signalList: document.querySelector("#signalList"),
   signalCount: document.querySelector("#signalCount"),
   chatLog: document.querySelector("#chatLog"),
@@ -199,6 +202,7 @@ function render() {
   els.portfolioTotal.textContent = money(portfolio);
   els.netWorthDelta.textContent = delta === 0 ? "No movement yet" : `${delta > 0 ? "+" : ""}${money(delta)} since last snapshot`;
   els.netWorthDelta.className = delta >= 0 ? "positive" : "negative";
+  els.netWorth.closest(".metric.primary")?.style.setProperty("--portfolio-share", `${worth > 0 ? Math.min(Math.max((portfolio / worth) * 100, 0), 100) : 0}%`);
 
   renderPortfolioSummary();
   renderAccounts();
@@ -343,7 +347,7 @@ function buildPortfolioGrowthPoints() {
 
 function renderAccounts() {
   if (!state.accounts.length) {
-    els.accountList.innerHTML = `<div class="empty-state"><svg><use href="#icon-wallet"></use></svg><h3>No Accounts Yet</h3><p>Add an account to get started.</p></div>`;
+    els.accountList.innerHTML = `<div class="empty-state"><svg><use href="#icon-wallet"></use></svg><h3>No Accounts</h3><p>Add one to start.</p></div>`;
     return;
   }
   els.accountList.innerHTML = state.accounts.map((acc, index) => {
@@ -366,7 +370,7 @@ function renderAccounts() {
 
 function renderHoldings() {
   if (!state.holdings.length) {
-    els.holdingList.innerHTML = `<div class="empty-state"><svg><use href="#icon-portfolio"></use></svg><h3>No Holdings</h3><p>Add assets or say "bought 2 AAPL".</p></div>`;
+    els.holdingList.innerHTML = `<div class="empty-state"><svg><use href="#icon-portfolio"></use></svg><h3>No Holdings</h3><p>Buy to start.</p></div>`;
     return;
   }
   els.holdingList.innerHTML = state.holdings.map(h => {
@@ -393,7 +397,7 @@ function renderHoldings() {
 function renderActivity() {
   const rows = state.transactions.slice(-6).reverse();
   if (!rows.length) {
-    els.activityList.innerHTML = `<div class="empty-state"><h3>No Activity</h3><p>Your recent transactions will appear here.</p></div>`;
+    els.activityList.innerHTML = `<div class="empty-state"><h3>No Activity</h3><p>New entries appear here.</p></div>`;
     return;
   }
   els.activityList.innerHTML = rows.map(tx => `
@@ -416,7 +420,7 @@ function renderBars() {
   els.accountSplitLabel.textContent = `${state.accounts.length} account${state.accounts.length === 1 ? "" : "s"}`;
   els.accountBars.innerHTML = state.accounts.length
     ? state.accounts.map(acc => barRow(acc.name, money(acc.balance), Math.abs(acc.balance) / cash)).join("")
-    : `<p class="muted">No account balances yet.</p>`;
+    : `<p class="muted">No balances yet.</p>`;
 
   const month = new Date().toISOString().slice(0, 7);
   const categories = state.transactions.filter(tx => tx.createdAt.startsWith(month) && tx.amount < 0).reduce((map, tx) => {
@@ -426,7 +430,7 @@ function renderBars() {
   const max = Math.max(...Object.values(categories), 1);
   els.categoryBars.innerHTML = Object.keys(categories).length
     ? Object.entries(categories).sort((a, b) => b[1] - a[1]).map(([name, val]) => barRow(name, money(val), val / max)).join("")
-    : `<p class="muted">Spending categories appear after withdrawals.</p>`;
+    : `<p class="muted">No outflows yet.</p>`;
 }
 
 function renderInsights() {
@@ -447,10 +451,24 @@ function renderInsights() {
   const profitPercent = portfolioCost() ? (profit / portfolioCost()) * 100 : 0;
   els.portfolioProfit.textContent = `${profit >= 0 ? "+" : ""}${money(profit)} · ${profitPercent >= 0 ? "+" : ""}${profitPercent.toFixed(2)}%`;
   els.portfolioProfit.className = profit >= 0 ? "positive" : "negative";
+  const investedShare = netWorth() > 0 ? Math.round((portfolioValue() / netWorth()) * 100) : 0;
+  els.investedShare.textContent = `${investedShare}%`;
+  els.investedShare.className = investedShare >= 70 ? "positive" : "";
+  const topHolding = state.holdings
+    .map(h => ({ symbol: h.symbol, value: h.quantity * h.price }))
+    .sort((a, b) => b.value - a.value)[0];
+  els.topHolding.textContent = topHolding ? `${topHolding.symbol} · ${money(topHolding.value)}` : "--";
+  const previousWorth = state.snapshots.length > 1 ? state.snapshots[state.snapshots.length - 2].value : netWorth();
+  const worthMove = netWorth() - previousWorth;
+  els.worthMove.textContent = worthMove === 0 ? "Flat" : `${worthMove > 0 ? "+" : ""}${money(worthMove)}`;
+  els.worthMove.className = worthMove >= 0 ? "positive" : "negative";
 
   const signals = [];
-  if (inflow || outflow) signals.push({ type: "Cash flow", title: savingsRate >= 0 ? `Kept ${savingsRate}% of inflow` : `Outflows exceed inflow`, detail: `${money(inflow)} in, ${money(outflow)} out.` });
-  signals.push({ type: "Allocation", title: netWorth() > 0 ? `${Math.round((portfolioValue() / netWorth()) * 100)}% invested` : "Waiting for balances", detail: "Check balance between cash and assets." });
+  if (inflow || outflow) signals.push({ type: "Flow", title: savingsRate >= 0 ? `${savingsRate}% saved` : "Outflow heavy", detail: `${money(inflow)} in · ${money(outflow)} out` });
+  signals.push({ type: "Mix", title: netWorth() > 0 ? `${investedShare}% invested` : "Waiting", detail: `${money(portfolioValue())} portfolio` });
+  if (topHolding) signals.push({ type: "Exposure", title: topHolding.symbol, detail: `${Math.round((topHolding.value / Math.max(portfolioAssetValue(), 1)) * 100)}% of assets` });
+  if (state.portfolioCash > 0) signals.push({ type: "Cash", title: money(state.portfolioCash), detail: "available in portfolio" });
+  if (worthMove !== 0) signals.push({ type: "Move", title: `${worthMove > 0 ? "+" : ""}${money(worthMove)}`, detail: "since last snapshot" });
   
   els.signalCount.textContent = `${signals.length} active`;
   els.signalList.innerHTML = signals.map(s => `
