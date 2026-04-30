@@ -326,14 +326,24 @@ button:active {
 
 .metric.primary {
   grid-column: 1 / -1;
-  min-height: 154px;
+  min-height: 0;
   position: relative;
   overflow: hidden;
+  gap: 18px;
   background:
     radial-gradient(circle at 88% 18%, rgba(52, 199, 89, 0.18), transparent 18%),
     linear-gradient(145deg, #ffffff, #edf9ef);
   color: var(--ink);
   border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.net-worth-card {
+  padding: 18px;
+}
+
+.net-worth-main {
+  display: grid;
+  gap: 6px;
 }
 
 .metric span, .metric small, .section-head span {
@@ -363,6 +373,54 @@ button:active {
   font-weight: 780;
   letter-spacing: -0.055em;
   max-width: 100%;
+}
+
+.net-worth-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.net-worth-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 70px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px;
+  border: 1px solid rgba(16, 185, 129, 0.16);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+  text-align: left;
+}
+
+.net-worth-tile::after {
+  content: "›";
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.net-worth-tile span,
+.net-worth-tile strong {
+  display: block;
+  max-width: calc(100% - 16px);
+}
+
+.net-worth-tile strong {
+  margin-top: 10px;
+  font-size: 22px;
+  line-height: 1.05;
+}
+
+.net-worth-tile:active {
+  transform: scale(0.985);
 }
 
 .panel {

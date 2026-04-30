@@ -56,18 +56,22 @@
             </button>
           </header>
           <div class="metric-grid">
-            <article class="metric primary">
-              <span>Net worth</span>
-              <strong id="netWorth">EUR 0</strong>
+            <article class="metric primary net-worth-card">
+              <div class="net-worth-main">
+                <span>Net worth</span>
+                <strong id="netWorth">EUR 0</strong>
+              </div>
               <small id="netWorthDelta" hidden></small>
-            </article>
-            <article class="metric metric-link" data-tab="accountsView" role="button" tabindex="0" aria-label="Open accounts">
-              <span>Cash</span>
-              <strong id="cashTotal">EUR 0</strong>
-            </article>
-            <article class="metric metric-link" data-tab="portfolioView" role="button" tabindex="0" aria-label="Open portfolio">
-              <span>Portfolio</span>
-              <strong id="portfolioTotal">EUR 0</strong>
+              <div class="net-worth-breakdown">
+                <button type="button" class="net-worth-tile" data-tab="accountsView" aria-label="Open accounts">
+                  <span>Cash</span>
+                  <strong id="cashTotal">EUR 0</strong>
+                </button>
+                <button type="button" class="net-worth-tile" data-tab="portfolioView" aria-label="Open portfolio">
+                  <span>Portfolio</span>
+                  <strong id="portfolioTotal">EUR 0</strong>
+                </button>
+              </div>
             </article>
           </div>
 
