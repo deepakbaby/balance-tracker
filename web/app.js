@@ -249,21 +249,10 @@ function render() {
   snapshot();
   saveState();
   const cash = totalCash(), portfolio = portfolioValue(), worth = cash + portfolio;
-  const previous = state.snapshots.length > 1 ? state.snapshots[state.snapshots.length - 2].value : worth;
-  const delta = worth - previous;
 
   els.netWorth.textContent = money(worth);
   els.cashTotal.textContent = money(cash);
   els.portfolioTotal.textContent = money(portfolio);
-  els.netWorthDelta.textContent = state.snapshots.length > 1
-    ? (delta === 0 ? "No change since last snapshot" : `${delta > 0 ? "+" : ""}${money(delta)} since last snapshot`)
-    : "First snapshot recorded";
-  els.netWorthDelta.className = delta >= 0 ? "positive" : "negative";
-  const portfolioShare = worth > 0 ? Math.min(Math.max((portfolio / worth) * 100, 0), 100) : 0;
-  const netWorthCard = els.netWorth.closest(".metric.primary");
-  netWorthCard?.style.setProperty("--portfolio-share", `${portfolioShare}%`);
-  netWorthCard?.setAttribute("data-ring-label", `Portfolio ${portfolioShare.toFixed(0)}%`);
-  netWorthCard?.setAttribute("title", `Ring shows portfolio share of net worth: ${portfolioShare.toFixed(0)}%`);
 
   renderPortfolioSummary();
   renderAccounts();
