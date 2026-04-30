@@ -392,9 +392,19 @@ button:active {
   padding: 12px;
   border: 1px solid rgba(16, 185, 129, 0.16);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.72);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(10, 132, 255, 0.16), transparent 48%),
+    rgba(255, 255, 255, 0.76);
   color: var(--ink);
   text-align: left;
+  overflow: hidden;
+}
+
+.net-worth-tile:nth-child(2) {
+  border-color: rgba(52, 199, 89, 0.18);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(52, 199, 89, 0.18), transparent 48%),
+    rgba(255, 255, 255, 0.76);
 }
 
 .net-worth-tile::after {
@@ -414,9 +424,12 @@ button:active {
 }
 
 .net-worth-tile strong {
-  margin-top: 10px;
-  font-size: 22px;
+  margin-top: 8px;
+  max-width: 100%;
+  font-size: clamp(15px, 4.4vw, 19px);
   line-height: 1.05;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
 }
 
 .net-worth-tile:active {
@@ -916,7 +929,7 @@ input:focus, select:focus, textarea:focus {
 .growth-chart {
   position: relative;
   margin-top: 14px;
-  padding-left: 30px;
+  padding-left: 24px;
 }
 
 .growth-chart svg {
@@ -947,7 +960,7 @@ input:focus, select:focus, textarea:focus {
   position: absolute;
   left: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 800;
   line-height: 1;
 }
@@ -978,7 +991,7 @@ input:focus, select:focus, textarea:focus {
   gap: 12px;
   margin-top: 8px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
 }
 

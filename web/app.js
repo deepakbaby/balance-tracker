@@ -647,7 +647,7 @@ function renderLineChart(target, height, points = buildNetWorthTrend()) {
   const min = low - padding;
   const max = high + padding;
   const span = max - min || 1;
-  const axis = { left: 54, right: 10, top: 14, bottom: 28 };
+  const axis = { left: 42, right: 8, top: 10, bottom: 22 };
   const plotWidth = Math.max(width - axis.left - axis.right, 1);
   const plotHeight = Math.max(height - axis.top - axis.bottom, 1);
   const chartData = points.map((p, i) => {
@@ -665,12 +665,12 @@ function renderLineChart(target, height, points = buildNetWorthTrend()) {
     ${yTicks.map((tick) => {
       const y = axis.top + (1 - ((tick - min) / span)) * plotHeight;
       return `<line x1="${axis.left}" y1="${y}" x2="${width - axis.right}" y2="${y}" stroke="#dbe6dc" stroke-width="1" />
-        <text x="${axis.left - 8}" y="${y + 4}" text-anchor="end" fill="#6f7c72" font-size="11" font-weight="700">${compactMoney(tick)}</text>`;
+        <text x="${axis.left - 6}" y="${y + 3}" text-anchor="end" fill="#6f7c72" font-size="9" font-weight="700">${compactMoney(tick)}</text>`;
     }).join("")}
     <line x1="${axis.left}" y1="${axis.top}" x2="${axis.left}" y2="${height - axis.bottom}" stroke="#9fb0a4" stroke-width="1.25" />
     <line x1="${axis.left}" y1="${height - axis.bottom}" x2="${width - axis.right}" y2="${height - axis.bottom}" stroke="#9fb0a4" stroke-width="1.25" />
-    <text x="${axis.left}" y="${height - 6}" text-anchor="start" fill="#6f7c72" font-size="11" font-weight="700">${formatChartDate(points[0].date)}</text>
-    <text x="${width - axis.right}" y="${height - 6}" text-anchor="end" fill="#6f7c72" font-size="11" font-weight="700">${formatChartDate(points.at(-1).date)}</text>
+    <text x="${axis.left}" y="${height - 5}" text-anchor="start" fill="#6f7c72" font-size="9" font-weight="700">${formatChartDate(points[0].date)}</text>
+    <text x="${width - axis.right}" y="${height - 5}" text-anchor="end" fill="#6f7c72" font-size="9" font-weight="700">${formatChartDate(points.at(-1).date)}</text>
     <polyline points="${coords.join(" ")}" fill="none" stroke="url(#g${target.id})" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
     <line class="chart-crosshair" y1="${axis.top}" y2="${height - axis.bottom}" stroke="#0f172a" stroke-width="1.5" stroke-dasharray="3,4" opacity="0" />
     <circle class="chart-marker" r="5" fill="#ffffff" stroke="#059669" stroke-width="3" opacity="0" />
