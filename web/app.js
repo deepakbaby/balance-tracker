@@ -230,12 +230,12 @@ function renderAccounts() {
       <article class="account-card" data-id="${acc.id}">
         <div class="account-top">
           <strong>${escapeHtml(acc.name)}</strong>
-          <strong>${money(acc.balance)}</strong>
+          <div class="card-value-actions">
+            <strong>${money(acc.balance)}</strong>
+            <button class="action-btn edit-account" data-id="${acc.id}" title="Edit account" aria-label="Edit ${escapeHtml(acc.name)}">✎</button>
+          </div>
         </div>
         <small>${count} transaction${count === 1 ? "" : "s"}</small>
-        <div class="card-actions">
-          <button class="action-btn edit-account" data-id="${acc.id}" title="Edit">✎</button>
-        </div>
       </article>`;
   }).join("");
   bindCardActions(els.accountList, openAccountDetail, openEditAccount);
@@ -253,14 +253,14 @@ function renderHoldings() {
       <article class="holding-card" data-id="${h.id}">
         <div class="holding-top">
           <strong>${escapeHtml(h.symbol)}</strong>
-          <strong>${money(value)}</strong>
+          <div class="card-value-actions">
+            <strong>${money(value)}</strong>
+            <button class="action-btn edit-holding" data-id="${h.id}" title="Edit holding" aria-label="Edit ${escapeHtml(h.symbol)}">✎</button>
+          </div>
         </div>
         <div class="holding-meta">
           <small>${h.quantity} units at ${money(h.price)}</small>
           <small class="${pnl >= 0 ? "positive" : "negative"}">${pnl >= 0 ? "+" : ""}${money(pnl)} (${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(2)}%)</small>
-        </div>
-        <div class="card-actions">
-          <button class="action-btn edit-holding" data-id="${h.id}" title="Edit">✎</button>
         </div>
       </article>`;
   }).join("");
