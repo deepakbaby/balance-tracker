@@ -3,6 +3,18 @@ import time
 import psycopg2
 import psycopg2.extras
 import yfinance as yf
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+env_file = ROOT / ".env"
+if env_file.exists():
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, val = line.split("=", 1)
+                val = val.split(" #")[0].strip().strip('"').strip("'")
+                os.environ.setdefault(key, val)
 
 DB_URL = os.environ.get("DATABASE_URL", "postgresql://deepak:mysecretpassword@localhost:5432/balance_db")
 POLL_INTERVAL = 60 * 60 # 1 hour
