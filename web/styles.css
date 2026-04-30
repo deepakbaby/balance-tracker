@@ -433,6 +433,12 @@ button:active {
   white-space: nowrap;
 }
 
+.metric.primary .net-worth-tile strong {
+  font-size: clamp(11px, 3.2vw, 14px);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+
 .net-worth-tile:active {
   transform: scale(0.985);
 }
