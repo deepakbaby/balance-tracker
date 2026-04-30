@@ -35,6 +35,8 @@ const els = {
   accountBars: document.querySelector("#accountBars"),
   categoryBars: document.querySelector("#categoryBars"),
   accountSplitLabel: document.querySelector("#accountSplitLabel"),
+  trendLabel: document.querySelector("#trendLabel"),
+  evolutionLabel: document.querySelector("#evolutionLabel"),
   chart: document.querySelector("#netWorthChart"),
   analysisChart: document.querySelector("#analysisChart"),
   monthlyInflow: document.querySelector("#monthlyInflow"),
@@ -176,8 +178,12 @@ function render() {
   renderBars();
   renderInsights();
   renderChat();
-  renderLineChart(els.chart, 200);
-  renderLineChart(els.analysisChart, 160);
+  const trendPoints = buildNetWorthTrend();
+  const trendText = trendPoints.length > 1 ? `${trendPoints.length} data points` : "Today";
+  els.trendLabel.textContent = trendText;
+  els.evolutionLabel.textContent = trendText;
+  renderLineChart(els.chart, 200, trendPoints);
+  renderLineChart(els.analysisChart, 160, trendPoints);
 }
 
 function renderPortfolioSummary() {
@@ -361,16 +367,79 @@ function renderChat() {
   els.chatLog.scrollTop = els.chatLog.scrollHeight;
 }
 
-function renderLineChart(target, height) {
+function buildNetWorthTrend() {
+  const currentWorth = netWorth();
+  const today = new Date().toISOString().slice(0, 10);
+  const pointsByDate = new Map([[today, currentWorth]]);
+  const transactionTotalsByDate = state.transactions.reduce((map, tx) => {
+    const date = dateKey(tx.createdAt);
+    if (!date || date > today) return map;
+    map.set(date, (map.get(date) || 0) + Number(tx.amount || 0));
+    return map;
+  }, new Map());
+
+  let runningWorth = currentWorth;
+  const transactionDates = [...transactionTotalsByDate.keys()].sort().reverse();
+  transactionDates.forEach((date) => {
+    if (date !== today) pointsByDate.set(date, runningWorth);
+    runningWorth -= transactionTotalsByDate.get(date);
+  });
+
+  const earliestTransactionDate = transactionDates.at(-1);
+  if (earliestTransactionDate) {
+    pointsByDate.set(addDays(earliestTransactionDate, -1), runningWorth);
+  }
+
+  state.snapshots.forEach((point) => {
+    const date = dateKey(point.date);
+    const value = Number(point.value);
+    if (date && Number.isFinite(value)) pointsByDate.set(date, value);
+  });
+
+  const oldestAllowed = addDays(today, -59);
+  const points = [...pointsByDate.entries()]
+    .filter(([date]) => date >= oldestAllowed && date <= today)
+    .map(([date, value]) => ({ date, value }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (points.length < 2) {
+    return [
+      { date: addDays(today, -1), value: currentWorth },
+      { date: today, value: currentWorth }
+    ];
+  }
+
+  return points;
+}
+
+function dateKey(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
+}
+
+function addDays(dateKeyValue, days) {
+  const date = new Date(`${dateKeyValue}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function renderLineChart(target, height, points = buildNetWorthTrend()) {
   const width = target.clientWidth || 640;
   target.setAttribute("viewBox", `0 0 ${width} ${height}`);
   if (width === 0) return; // Hidden
-  const points = state.snapshots.length ? state.snapshots : [{ date: "now", value: netWorth() }];
   if (points.length < 2) {
     target.innerHTML = `<line x1="0" y1="${height / 2}" x2="${width}" y2="${height / 2}" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4,4" />`;
     return;
   }
-  const values = points.map(p => p.value), min = Math.min(...values, 0), max = Math.max(...values, 1), span = max - min || 1;
+  const values = points.map(p => p.value);
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const padding = Math.max((high - low) * 0.12, Math.max(Math.abs(high), 1) * 0.02);
+  const min = low - padding;
+  const max = high + padding;
+  const span = max - min || 1;
   const coords = points.map((p, i) => `${(i / (points.length - 1)) * width},${height - ((p.value - min) / span) * (height - 24) - 12}`);
   target.innerHTML = `
     <defs><linearGradient id="g${target.id}" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#059669"/></linearGradient></defs>
@@ -501,14 +570,14 @@ function bindCardActions(rootEl, openDetail, openEdit) {
     btn.addEventListener("click", e => {
       e.preventDefault();
       e.stopPropagation();
-      openEdit(Number(btn.dataset.id));
+      openEdit(btn.dataset.id);
     });
   });
   if (openDetail) {
     rootEl.querySelectorAll(".account-card, .holding-card").forEach(card => {
       card.addEventListener("click", e => {
         if (e.target.closest(".action-btn")) return;
-        openDetail(Number(card.dataset.id));
+        openDetail(card.dataset.id);
       });
     });
   }
@@ -581,7 +650,7 @@ document.querySelector("#closeHoldingDetail").addEventListener("click", () => el
 
 document.querySelector("#updatePriceForm").addEventListener("submit", async e => {
   e.preventDefault();
-  const id = Number(els.holdingDetailView.dataset.id);
+  const id = els.holdingDetailView.dataset.id;
   const h = state.holdings.find(x => x.id === id);
   const newPrice = Number(document.querySelector("#newPriceInput").value);
   if (h && newPrice) {
