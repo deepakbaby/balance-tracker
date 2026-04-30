@@ -161,17 +161,145 @@ def upsert_holding(cur, symbol, quantity, cost, price):
     cur.execute("SELECT * FROM holdings WHERE symbol = %s", (symbol,))
     existing = cur.fetchone()
     if existing:
-        total_qty = float(existing["quantity"]) + quantity
-        avg_cost = ((float(existing["quantity"]) * float(existing["cost"])) + (quantity * cost)) / total_qty if total_qty > 0 else 0
+        is_deleted = existing.get("deleted_at") is not None
+        existing_qty = 0.0 if is_deleted else float(existing["quantity"])
+        existing_cost = 0.0 if is_deleted else float(existing["cost"])
+        if quantity > 0:
+            total_qty = existing_qty + quantity
+            avg_cost = ((existing_qty * existing_cost) + (quantity * cost)) / total_qty if total_qty > 0 else cost
+        else:
+            total_qty = existing_qty
+            avg_cost = existing_cost
+        new_price = price if price > 0 else float(existing["price"])
         cur.execute(
-            "UPDATE holdings SET quantity = %s, cost = %s, price = %s WHERE id = %s",
-            (total_qty, avg_cost, price, existing["id"]),
+            "UPDATE holdings SET quantity = %s, cost = %s, price = %s, last_price_at = CURRENT_TIMESTAMP, deleted_at = NULL WHERE id = %s",
+            (total_qty, avg_cost, new_price, existing["id"]),
         )
     else:
         cur.execute(
             "INSERT INTO holdings (symbol, quantity, cost, price) VALUES (%s, %s, %s, %s)",
             (symbol, quantity, cost, price),
         )
+
+
+def find_account(cur, name):
+    if not name:
+        return None
+    clean = re.sub(r"\s+", " ", str(name)).strip()
+    cur.execute("SELECT * FROM accounts WHERE lower(name) = lower(%s) AND deleted_at IS NULL", (clean,))
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def resolve_insight(cur, topic, period_days):
+    days = max(1, int(period_days or 30))
+    if topic == "net_worth":
+        t = get_totals(cur)
+        return f"Net worth: {money(t['net_worth'])} (cash {money(t['cash'])} + portfolio {money(t['portfolio'])}). Unrealised PnL {money(t['pnl'])}."
+    if topic == "spending_trend":
+        cur.execute(
+            "SELECT COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0) v "
+            "FROM transactions WHERE deleted_at IS NULL AND created_at > CURRENT_DATE - (%s || ' days')::interval",
+            (days,)
+        )
+        cur_out = float(cur.fetchone()["v"])
+        cur.execute(
+            "SELECT COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0) v "
+            "FROM transactions WHERE deleted_at IS NULL "
+            "AND created_at > CURRENT_DATE - (%s || ' days')::interval "
+            "AND created_at <= CURRENT_DATE - (%s || ' days')::interval",
+            (days * 2, days)
+        )
+        prev_out = float(cur.fetchone()["v"])
+        delta = cur_out - prev_out
+        pct = (delta / prev_out * 100) if prev_out > 0 else 0
+        direction = "up" if delta > 0 else "down" if delta < 0 else "flat"
+        return f"Spending last {days}d: {money(cur_out)} ({direction} {abs(pct):.1f}% vs prior {days}d which was {money(prev_out)})."
+    if topic == "top_categories":
+        cur.execute(
+            "SELECT category, SUM(-amount) total FROM transactions "
+            "WHERE deleted_at IS NULL AND amount < 0 AND created_at > CURRENT_DATE - (%s || ' days')::interval "
+            "GROUP BY category ORDER BY total DESC LIMIT 5",
+            (days,)
+        )
+        rows = cur.fetchall()
+        if not rows:
+            return f"No outflows in the last {days} days."
+        items = ", ".join(f"{r['category']} {money(float(r['total']))}" for r in rows)
+        return f"Top categories last {days}d: {items}."
+    if topic == "savings_rate":
+        cur.execute(
+            "SELECT COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) inflow, "
+            "COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0) outflow "
+            "FROM transactions WHERE deleted_at IS NULL AND created_at > CURRENT_DATE - (%s || ' days')::interval",
+            (days,)
+        )
+        r = cur.fetchone()
+        inflow, outflow = float(r["inflow"]), float(r["outflow"])
+        rate = ((inflow - outflow) / inflow * 100) if inflow > 0 else 0
+        return f"Savings rate last {days}d: {rate:.1f}% (in {money(inflow)}, out {money(outflow)})."
+    if topic == "runway":
+        cur.execute(
+            "SELECT COALESCE(SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END), 0) v "
+            "FROM transactions WHERE deleted_at IS NULL AND created_at > CURRENT_DATE - (%s || ' days')::interval",
+            (days,)
+        )
+        outflow = float(cur.fetchone()["v"])
+        monthly_burn = (outflow / days) * 30 if days > 0 else 0
+        cur.execute("SELECT COALESCE(SUM(balance), 0) v FROM accounts WHERE deleted_at IS NULL")
+        cash = float(cur.fetchone()["v"])
+        if monthly_burn <= 0:
+            return f"No outflow in the last {days}d — runway is effectively unlimited at current cash {money(cash)}."
+        return f"Runway: {cash / monthly_burn:.1f} months at {money(monthly_burn)}/mo burn (cash {money(cash)})."
+    if topic == "portfolio_pnl":
+        t = get_totals(cur)
+        pct = (t["pnl"] / t["cost"] * 100) if t["cost"] > 0 else 0
+        return f"Portfolio: value {money(t['portfolio'])}, cost {money(t['cost'])}, unrealised PnL {money(t['pnl'])} ({pct:+.2f}%)."
+    if topic == "biggest_transactions":
+        cur.execute(
+            "SELECT t.amount, t.note, t.category, a.name account_name FROM transactions t "
+            "JOIN accounts a ON a.id = t.account_id "
+            "WHERE t.deleted_at IS NULL AND a.deleted_at IS NULL "
+            "AND t.created_at > CURRENT_DATE - (%s || ' days')::interval "
+            "ORDER BY ABS(t.amount) DESC LIMIT 5",
+            (days,)
+        )
+        rows = cur.fetchall()
+        if not rows:
+            return f"No transactions in the last {days} days."
+        items = "; ".join(f"{money(float(r['amount']))} {r['category']} ({r['account_name']})" for r in rows)
+        return f"Biggest transactions last {days}d: {items}."
+    if topic == "account_breakdown":
+        cur.execute("SELECT name, balance FROM accounts WHERE deleted_at IS NULL ORDER BY balance DESC")
+        rows = cur.fetchall()
+        if not rows:
+            return "No accounts yet."
+        items = ", ".join(f"{r['name']} {money(float(r['balance']))}" for r in rows)
+        return f"Accounts: {items}."
+    if topic == "asset_allocation":
+        cur.execute("SELECT symbol, quantity * price value FROM holdings WHERE deleted_at IS NULL")
+        rows = cur.fetchall()
+        total = sum(float(r["value"]) for r in rows)
+        if total <= 0:
+            return "No portfolio holdings yet."
+        rows = sorted(rows, key=lambda r: float(r["value"]), reverse=True)
+        items = ", ".join(f"{r['symbol']} {float(r['value']) / total * 100:.1f}%" for r in rows[:6])
+        return f"Allocation (of {money(total)}): {items}."
+    if topic == "recent_activity":
+        n = min(max(1, days), 10) if days <= 10 else 7
+        cur.execute(
+            "SELECT t.amount, t.note, a.name account_name, t.created_at FROM transactions t "
+            "JOIN accounts a ON a.id = t.account_id "
+            "WHERE t.deleted_at IS NULL AND a.deleted_at IS NULL "
+            "ORDER BY t.created_at DESC LIMIT %s",
+            (n,)
+        )
+        rows = cur.fetchall()
+        if not rows:
+            return "No recent transactions."
+        items = "; ".join(f"{money(float(r['amount']))} {r['note'] or ''} ({r['account_name']})" for r in rows)
+        return f"Last {n} transactions: {items}."
+    return None
 
 
 def handle_chat_command(text):
@@ -190,20 +318,22 @@ def handle_chat_command(text):
     payload = json.dumps(agent_resp)
 
     with db_cursor() as cur:
-        cur.execute("INSERT INTO agent_actions (action_type, payload_json, status) VALUES (%s, %s, %s) RETURNING id", 
+        cur.execute("INSERT INTO agent_actions (action_type, payload_json, status) VALUES (%s, %s, %s) RETURNING id",
                               (action, payload, "pending" if requires_confirmation else "executed"))
         action_id = cur.fetchone()["id"]
-        
+
         reply_text = agent_resp.get("replyText", "")
         if requires_confirmation:
             if not reply_text:
                 reply_text = f"Do you confirm this {action}?"
         else:
-            execute_agent_action(cur, action, agent_resp)
-            if not reply_text:
-                 reply_text = f"Action {action} completed."
+            executed_reply = execute_agent_action(cur, action, agent_resp)
+            if executed_reply:
+                reply_text = executed_reply
+            elif not reply_text:
+                reply_text = f"Action {action} completed."
             action_id = None
-                 
+
         cur.execute("INSERT INTO chat_messages (role, text, action_id) VALUES (%s, %s, %s)", ("agent", reply_text, action_id))
         return {"reply": reply_text, "requires_confirmation": requires_confirmation, "action_id": action_id}
 
@@ -218,8 +348,83 @@ def execute_agent_action(cur, action, payload):
             "INSERT INTO transactions (account_id, amount, category, note) VALUES (%s, %s, %s, %s)",
             (account["id"], signed_amount, payload.get("category", "manual"), payload.get("note", ""))
         )
-    elif action == "update_holding":
+        return None
+    if action == "update_holding":
         upsert_holding(cur, payload.get("symbol", "").upper(), float(payload.get("quantity", 0)), float(payload.get("cost", 0)), float(payload.get("price", 0)))
+        return None
+    if action == "create_account":
+        name = str(payload.get("name", "")).strip()
+        if not name:
+            return "Cannot create an account without a name."
+        opening = float(payload.get("opening_balance", 0) or 0)
+        cur.execute(
+            "INSERT INTO accounts (name, balance) VALUES (%s, %s) ON CONFLICT (name) DO UPDATE SET deleted_at = NULL, balance = EXCLUDED.balance",
+            (name, opening),
+        )
+        return f"Account '{name}' ready with opening balance {money(opening)}."
+    if action == "rename_account":
+        old = find_account(cur, payload.get("old_name"))
+        new_name = str(payload.get("new_name", "")).strip()
+        if not old or not new_name:
+            return "Could not rename — account not found or new name empty."
+        cur.execute("UPDATE accounts SET name = %s WHERE id = %s", (new_name, old["id"]))
+        return f"Renamed '{old['name']}' to '{new_name}'."
+    if action == "delete_account":
+        acc = find_account(cur, payload.get("name"))
+        if not acc:
+            return "Account not found."
+        cur.execute("UPDATE accounts SET deleted_at = CURRENT_TIMESTAMP WHERE id = %s", (acc["id"],))
+        return f"Closed account '{acc['name']}'."
+    if action == "transfer":
+        src = find_account(cur, payload.get("from_account"))
+        dst = find_account(cur, payload.get("to_account"))
+        amount = float(payload.get("amount", 0) or 0)
+        if not src or not dst or amount <= 0:
+            return "Transfer skipped — accounts or amount missing."
+        if src["id"] == dst["id"]:
+            return "Source and destination accounts are the same."
+        note = payload.get("note") or f"transfer {src['name']}→{dst['name']}"
+        cur.execute("UPDATE accounts SET balance = balance - %s WHERE id = %s", (amount, src["id"]))
+        cur.execute("UPDATE accounts SET balance = balance + %s WHERE id = %s", (amount, dst["id"]))
+        cur.execute("INSERT INTO transactions (account_id, amount, category, note) VALUES (%s, %s, %s, %s)",
+                    (src["id"], -amount, "transfer", note))
+        cur.execute("INSERT INTO transactions (account_id, amount, category, note) VALUES (%s, %s, %s, %s)",
+                    (dst["id"], amount, "transfer", note))
+        return f"Transferred {money(amount)} from '{src['name']}' to '{dst['name']}'."
+    if action == "sell_holding":
+        symbol = str(payload.get("symbol", "")).upper().strip()
+        qty = float(payload.get("quantity", 0) or 0)
+        cur.execute("SELECT * FROM holdings WHERE symbol = %s AND deleted_at IS NULL", (symbol,))
+        existing = cur.fetchone()
+        if not existing or qty <= 0:
+            return f"Cannot sell — holding {symbol or '?'} not found or quantity invalid."
+        ex_qty = float(existing["quantity"])
+        if qty > ex_qty:
+            return f"Cannot sell {qty} {symbol}; only {ex_qty} held."
+        sale_price = float(payload.get("price") or existing["price"])
+        proceeds = qty * sale_price
+        realized = (sale_price - float(existing["cost"])) * qty
+        new_qty = ex_qty - qty
+        if new_qty <= 0:
+            cur.execute("UPDATE holdings SET deleted_at = CURRENT_TIMESTAMP WHERE id = %s", (existing["id"],))
+        else:
+            cur.execute("UPDATE holdings SET quantity = %s WHERE id = %s", (new_qty, existing["id"]))
+        credit_name = payload.get("credit_account")
+        if credit_name:
+            account = find_or_create_account(cur, credit_name)
+            cur.execute("UPDATE accounts SET balance = balance + %s WHERE id = %s", (proceeds, account["id"]))
+            cur.execute("INSERT INTO transactions (account_id, amount, category, note) VALUES (%s, %s, %s, %s)",
+                        (account["id"], proceeds, "investment", f"sell {qty} {symbol} @ {sale_price}"))
+        return f"Sold {qty} {symbol} @ {money(sale_price)}. Proceeds {money(proceeds)}, realised PnL {money(realized)}."
+    if action == "remove_holding":
+        symbol = str(payload.get("symbol", "")).upper().strip()
+        cur.execute("UPDATE holdings SET deleted_at = CURRENT_TIMESTAMP WHERE symbol = %s AND deleted_at IS NULL", (symbol,))
+        return f"Removed holding {symbol}." if cur.rowcount else f"No active holding {symbol} to remove."
+    if action == "insight":
+        topic = str(payload.get("topic", "")).strip()
+        period = payload.get("period_days") or (7 if topic == "recent_activity" else 30)
+        return resolve_insight(cur, topic, period) or "I don't know that insight topic yet."
+    return None
 
 def mock_openclaw_response(text):
     normalized = text.strip().lower()

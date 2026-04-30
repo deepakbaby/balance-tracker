@@ -38,24 +38,18 @@
     </svg>
 
     <div class="app-shell">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">Private tracker</p>
-          <h1>Balance</h1>
-        </div>
-        <div class="button-row">
-          <select id="currencySelector" class="text-button" style="padding: 0 10px; font-weight: bold; width: auto; min-height: 36px; border-radius: 8px;">
-            <option value="EUR">EUR</option>
-            <option value="USD">USD</option>
-            <option value="GBP">GBP</option>
-            <option value="INR">INR</option>
-          </select>
-          <button class="icon-button" id="lockButton" aria-label="Lock app" title="Lock app" style="min-height: 36px; padding: 0 10px; border-radius: 8px;">Lock</button>
-        </div>
-      </header>
+      <button class="settings-fab" id="settingsBtn" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>
+        </svg>
+      </button>
 
       <main>
         <section class="view active" id="dashboardView">
+          <header class="view-header">
+            <h1>Home</h1>
+          </header>
           <div class="metric-grid">
             <article class="metric primary">
               <span>Net worth</span>
@@ -69,10 +63,6 @@
             <article class="metric">
               <span>Portfolio</span>
               <strong id="portfolioTotal">EUR 0</strong>
-            </article>
-            <article class="metric">
-              <span>PnL</span>
-              <strong id="pnlTotal">EUR 0</strong>
             </article>
           </div>
 
@@ -99,13 +89,10 @@
         </section>
 
         <section class="view" id="accountsView">
-          <div class="section-head tall">
-            <div>
-              <p class="eyebrow">Accounts</p>
-              <h2>Balances</h2>
-            </div>
-            <button class="primary-button" id="addAccountButton">New</button>
-          </div>
+          <header class="view-header">
+            <h1>Accounts</h1>
+            <button class="nav-action" id="addAccountButton" aria-label="Add account">+</button>
+          </header>
           <form class="inline-form hidden" id="accountForm">
             <input id="accountName" autocomplete="off" placeholder="Account name" required />
             <input id="accountBalance" inputmode="decimal" type="number" step="0.01" placeholder="Opening balance" required />
@@ -115,16 +102,13 @@
         </section>
 
         <section class="view" id="portfolioView">
-          <div class="section-head tall">
-            <div>
-              <p class="eyebrow">Portfolio</p>
-              <h2>Holdings</h2>
+          <header class="view-header">
+            <h1>Portfolio</h1>
+            <div class="nav-actions">
+              <button class="nav-action ghost" id="refreshPricesButton" aria-label="Refresh prices">↻</button>
+              <button class="nav-action" id="addHoldingButton" aria-label="Add holding">+</button>
             </div>
-            <div class="button-row">
-              <button class="text-button" id="refreshPricesButton">Live</button>
-              <button class="primary-button" id="addHoldingButton">New</button>
-            </div>
-          </div>
+          </header>
           <article class="portfolio-hero">
             <span>Total value</span>
             <strong id="portfolioLiveValue">EUR 0</strong>
@@ -150,12 +134,9 @@
         </section>
 
         <section class="view" id="analysisView">
-          <div class="section-head tall">
-            <div>
-              <p class="eyebrow">Analysis</p>
-              <h2>Insights</h2>
-            </div>
-          </div>
+          <header class="view-header">
+            <h1>Analysis</h1>
+          </header>
           <div class="insight-grid">
             <article class="insight-card">
               <span>Monthly inflow</span>
@@ -207,16 +188,13 @@
         </section>
 
         <section class="view" id="chatView">
-          <div class="chat-header">
-            <div>
-              <p class="eyebrow">OpenClaw-ready</p>
-              <h2>Chat Ledger</h2>
-            </div>
-          </div>
+          <header class="view-header">
+            <h1>Chat</h1>
+          </header>
           <div class="chat-log" id="chatLog"></div>
           <form class="chat-box" id="chatForm">
             <input id="chatInput" autocomplete="off" placeholder="Added 1500 to account1" />
-            <button type="submit">Send</button>
+            <button type="submit" aria-label="Send">↑</button>
           </form>
         </section>
       </main>
@@ -306,6 +284,25 @@
         <button type="submit">Update Price</button>
       </form>
     </section>
+
+    <!-- Settings sheet -->
+    <div class="sheet-backdrop" id="settingsBackdrop">
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+        <div class="sheet-handle"></div>
+        <h2 id="settingsTitle">Settings</h2>
+        <div class="sheet-row">
+          <label for="currencySelector">Currency</label>
+          <select id="currencySelector">
+            <option value="EUR">EUR</option>
+            <option value="USD">USD</option>
+            <option value="GBP">GBP</option>
+            <option value="INR">INR</option>
+          </select>
+        </div>
+        <button class="sheet-row sheet-row-button danger" id="lockButton">Lock app</button>
+        <button class="sheet-close" id="settingsCloseBtn">Done</button>
+      </div>
+    </div>
 
     <!-- Modals -->
     <div class="modal-backdrop" id="modalBackdrop">

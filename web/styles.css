@@ -122,28 +122,85 @@ button:active {
   min-height: 100vh;
   max-width: 680px;
   margin: 0 auto;
-  padding: 18px 16px 104px;
+  padding: max(env(safe-area-inset-top), 8px) 16px calc(96px + env(safe-area-inset-bottom));
   position: relative;
 }
 
-.topbar, .section-head, .chat-header {
+.section-head, .chat-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
 
-.topbar { padding: 4px 0 24px; }
+.view-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0 18px;
+}
 
-.topbar h1, .section-head h2, .chat-header h2, .lock-card h2, .modal h2 {
+.view-header h1 {
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.022em;
+}
+
+.section-head h2, .chat-header h2, .lock-card h2, .modal h2 {
   margin: 0;
   letter-spacing: -0.02em;
 }
 
-.topbar h1 {
-  font-size: 36px;
+/* Floating settings cog (top-right of app shell) */
+.settings-fab {
+  position: absolute;
+  top: max(env(safe-area-inset-top), 8px);
+  right: 16px;
+  width: 38px;
+  height: 38px;
+  border-radius: 19px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+  padding: 0;
+  min-height: 0;
+}
+.settings-fab:active { transform: scale(0.92); }
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-action {
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  border: 0;
+  background: var(--accent);
+  color: white;
+  font-size: 22px;
   line-height: 1;
-  font-weight: 800;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  min-height: 0;
+}
+.nav-action.ghost {
+  background: var(--soft-panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  font-size: 18px;
 }
 
 .eyebrow {
@@ -198,19 +255,21 @@ button:active {
   gap: 12px;
 }
 
-/* Cards */
+/* Cards — iOS grouped style */
 .metric, .panel, .account-card, .holding-card, .insight-card, .portfolio-hero {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--border-radius-lg);
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border-radius: 14px;
+  box-shadow: none;
+  transition: transform 0.2s ease;
 }
 
-.account-card:hover, .holding-card:hover, .panel:hover {
-  box-shadow: var(--shadow);
-  transform: translateY(-2px);
+@media (hover: hover) {
+  .account-card:hover, .holding-card:hover, .panel:hover {
+    box-shadow: var(--shadow-sm);
+  }
 }
+.account-card:active, .holding-card:active { transform: scale(0.985); }
 
 .metric {
   min-height: 104px;
@@ -400,25 +459,34 @@ input:focus, select:focus, textarea:focus {
   top: 14px; right: 14px;
   display: flex;
   gap: 8px;
-  opacity: 0;
+  opacity: 1;
   transition: opacity 0.2s ease;
 }
+
 .account-card:hover .card-actions, .holding-card:hover .card-actions {
   opacity: 1;
 }
 
 .action-btn {
-  background: white;
+  background: var(--soft-panel);
   border: 1px solid var(--line);
-  border-radius: 6px;
-  width: 28px; height: 28px;
-  display: flex; align-items: center; justify-content: center;
+  border-radius: 18px;
+  width: 36px; height: 36px;
+  display: inline-flex; align-items: center; justify-content: center;
   color: var(--muted);
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
   min-height: 0;
   padding: 0;
+  font-size: 16px;
+  position: relative;
 }
-.action-btn:hover { color: var(--ink); border-color: #cbd5e1; }
+.action-btn::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+}
+.action-btn:active { transform: scale(0.9); }
+.action-btn:hover { color: var(--ink); }
 
 .account-card small, .holding-card small { color: var(--muted); }
 
@@ -613,7 +681,7 @@ input:focus, select:focus, textarea:focus {
 .chat-box {
   position: fixed;
   left: 50%;
-  bottom: 84px;
+  bottom: calc(env(safe-area-inset-bottom) + 84px);
   width: min(648px, calc(100% - 32px));
   transform: translateX(-50%);
   display: grid;
@@ -647,18 +715,19 @@ input:focus, select:focus, textarea:focus {
 .tabbar {
   position: fixed;
   left: 50%;
-  bottom: 16px;
+  bottom: calc(env(safe-area-inset-bottom) + 12px);
   width: min(648px, calc(100% - 32px));
   transform: translateX(-50%);
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 6px;
-  padding: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: var(--border-radius-xl);
-  background: var(--glass);
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.78);
   backdrop-filter: blur(24px) saturate(1.8);
-  box-shadow: var(--shadow-float);
+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
+  box-shadow: 0 8px 24px -8px rgba(15, 23, 42, 0.18);
   z-index: 40;
 }
 
@@ -681,8 +750,6 @@ input:focus, select:focus, textarea:focus {
 .tab.active {
   background: var(--accent-soft);
   color: var(--accent-strong);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-sm);
 }
 
 .tab svg {
@@ -785,4 +852,108 @@ input:focus, select:focus, textarea:focus {
 
 @media (min-width: 640px) {
   .inline-form { grid-template-columns: 1fr 180px auto; }
+}
+
+/* Settings sheet (iOS-style bottom sheet) */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(2px);
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 220;
+  animation: fadeIn 0.2s;
+}
+.sheet-backdrop.active { display: flex; }
+
+.sheet {
+  width: 100%;
+  max-width: 520px;
+  background: var(--panel);
+  border-radius: 22px 22px 0 0;
+  padding: 12px 20px calc(env(safe-area-inset-bottom) + 24px);
+  box-shadow: 0 -10px 30px -10px rgba(15, 23, 42, 0.25);
+  animation: sheetUp 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+  display: grid;
+  gap: 10px;
+}
+
+@keyframes sheetUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.sheet-handle {
+  width: 36px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--line);
+  margin: 0 auto 6px;
+}
+
+.sheet h2 {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.sheet-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--soft-panel);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.sheet-row label { font-weight: 500; }
+.sheet-row select {
+  width: auto;
+  min-height: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--panel);
+  font-weight: 600;
+}
+
+.sheet-row-button {
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  width: 100%;
+}
+.sheet-row-button.danger {
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--danger);
+  font-weight: 600;
+  justify-content: center;
+}
+
+.sheet-close {
+  margin-top: 6px;
+  min-height: 48px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+  font-size: 15px;
+}
+.sheet-close:active { transform: scale(0.985); }
+
+/* Subtle iOS-style group when cards stack tightly */
+.account-list, .holding-list, .insight-grid, .metric-grid {
+  margin-top: 4px;
+}
+
+/* Reduce visual weight of tabbar shadow on light backgrounds */
+@media (prefers-color-scheme: dark) {
+  .tabbar { background: rgba(15, 23, 42, 0.7); border-color: rgba(255,255,255,0.08); }
 }

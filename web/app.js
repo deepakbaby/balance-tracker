@@ -23,7 +23,6 @@ const els = {
   netWorthDelta: document.querySelector("#netWorthDelta"),
   cashTotal: document.querySelector("#cashTotal"),
   portfolioTotal: document.querySelector("#portfolioTotal"),
-  pnlTotal: document.querySelector("#pnlTotal"),
   portfolioLiveValue: document.querySelector("#portfolioLiveValue"),
   portfolioLivePnl: document.querySelector("#portfolioLivePnl"),
   portfolioKpis: document.querySelector("#portfolioKpis"),
@@ -160,15 +159,13 @@ function snapshot() {
 function render() {
   snapshot();
   saveState();
-  const cash = totalCash(), portfolio = portfolioValue(), pnl = portfolio - portfolioCost(), worth = cash + portfolio;
+  const cash = totalCash(), portfolio = portfolioValue(), worth = cash + portfolio;
   const previous = state.snapshots.length > 1 ? state.snapshots[state.snapshots.length - 2].value : worth;
   const delta = worth - previous;
 
   els.netWorth.textContent = money(worth);
   els.cashTotal.textContent = money(cash);
   els.portfolioTotal.textContent = money(portfolio);
-  els.pnlTotal.textContent = money(pnl);
-  els.pnlTotal.className = pnl >= 0 ? "positive" : "negative";
   els.netWorthDelta.textContent = delta === 0 ? "No movement yet" : `${delta > 0 ? "+" : ""}${money(delta)} since last snapshot`;
   els.netWorthDelta.className = delta >= 0 ? "positive" : "negative";
 
@@ -235,6 +232,7 @@ function renderAccounts() {
         </div>
       </article>`;
   }).join("");
+  bindCardActions(els.accountList, openAccountDetail, openEditAccount);
 }
 
 function renderHoldings() {
@@ -260,6 +258,7 @@ function renderHoldings() {
         </div>
       </article>`;
   }).join("");
+  bindCardActions(els.holdingList, openHoldingDetail, openEditHolding);
 }
 
 function renderActivity() {
@@ -280,6 +279,7 @@ function renderActivity() {
       </div>
     </div>
   `).join("");
+  bindCardActions(els.activityList, null, openEditTx);
 }
 
 function renderBars() {
@@ -428,72 +428,94 @@ document.querySelector("#modalCancelBtn").addEventListener("click", closeModal);
 
 els.genericForm.addEventListener("submit", async e => {
   e.preventDefault();
-  if (currentModalAction?.onSave) await currentModalAction.onSave(new FormData(els.genericForm));
-  closeModal();
-});
-
-els.modalDeleteBtn.addEventListener("click", async () => {
-  if (confirm("Are you sure you want to delete this?") && currentModalAction?.onDelete) {
-    await currentModalAction.onDelete();
+  if (!currentModalAction?.onSave) return closeModal();
+  try {
+    await currentModalAction.onSave(new FormData(els.genericForm));
     closeModal();
+  } catch (err) {
+    showToast(err.message || "Save failed", "error");
   }
 });
 
+els.modalDeleteBtn.addEventListener("click", async () => {
+  if (!confirm("Are you sure you want to delete this?") || !currentModalAction?.onDelete) return;
+  try {
+    await currentModalAction.onDelete();
+    closeModal();
+  } catch (err) {
+    showToast(err.message || "Delete failed", "error");
+  }
+});
+
+function openEditAccount(id) {
+  const acc = state.accounts.find(a => a.id === id);
+  if (!acc) return;
+  openModal("Edit Account", `
+    <input name="name" value="${escapeHtml(acc.name)}" placeholder="Name" required />
+    <input name="balance" type="number" inputmode="decimal" step="0.01" value="${acc.balance}" placeholder="Balance" required />
+  `, async fd => {
+    await api(`/api/accounts/${id}`, { method: "PUT", body: JSON.stringify({ name: fd.get("name"), balance: fd.get("balance") }) });
+    await loadServerState(); showToast("Account updated");
+  }, async () => {
+    await api(`/api/accounts/${id}`, { method: "DELETE" });
+    await loadServerState(); showToast("Account deleted");
+  });
+}
+
+function openEditHolding(id) {
+  const holding = state.holdings.find(h => h.id === id);
+  if (!holding) return;
+  openModal("Edit Holding", `
+    <input name="symbol" value="${escapeHtml(holding.symbol)}" required />
+    <input name="quantity" type="number" inputmode="decimal" step="0.000001" value="${holding.quantity}" required />
+    <input name="cost" type="number" inputmode="decimal" step="0.01" value="${holding.cost}" required />
+    <input name="price" type="number" inputmode="decimal" step="0.01" value="${holding.price}" required />
+  `, async fd => {
+    await api(`/api/holdings/${id}`, { method: "PUT", body: JSON.stringify(Object.fromEntries(fd)) });
+    await loadServerState(); showToast("Holding updated");
+  }, async () => {
+    await api(`/api/holdings/${id}`, { method: "DELETE" });
+    await loadServerState(); showToast("Holding deleted");
+  });
+}
+
+function openEditTx(id) {
+  const tx = state.transactions.find(t => t.id === id);
+  if (!tx) return;
+  openModal("Edit Transaction", `
+    <input name="account" value="${escapeHtml(tx.accountName)}" required />
+    <input name="amount" type="number" inputmode="decimal" step="0.01" value="${tx.amount}" required />
+    <input name="category" value="${escapeHtml(tx.category)}" required />
+    <input name="note" value="${escapeHtml(tx.note)}" required />
+  `, async fd => {
+    await api(`/api/transactions/${id}`, { method: "PUT", body: JSON.stringify(Object.fromEntries(fd)) });
+    await loadServerState(); showToast("Transaction updated");
+  }, async () => {
+    await api(`/api/transactions/${id}`, { method: "DELETE" });
+    await loadServerState(); showToast("Transaction deleted");
+  });
+}
+
+function bindCardActions(rootEl, openDetail, openEdit) {
+  rootEl.querySelectorAll(".edit-account, .edit-holding, .edit-tx").forEach(btn => {
+    btn.addEventListener("click", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      openEdit(Number(btn.dataset.id));
+    });
+  });
+  if (openDetail) {
+    rootEl.querySelectorAll(".account-card, .holding-card").forEach(card => {
+      card.addEventListener("click", e => {
+        if (e.target.closest(".action-btn")) return;
+        openDetail(Number(card.dataset.id));
+      });
+    });
+  }
+}
+
 document.body.addEventListener("click", e => {
-  if (e.target.closest(".edit-account")) {
-    e.stopPropagation();
-    const id = Number(e.target.closest(".edit-account").dataset.id);
-    const acc = state.accounts.find(a => a.id === id);
-    if (!acc) return;
-    openModal("Edit Account", `
-      <input name="name" value="${escapeHtml(acc.name)}" placeholder="Name" required />
-      <input name="balance" type="number" step="0.01" value="${acc.balance}" placeholder="Balance" required />
-    `, async fd => {
-      await api(`/api/accounts/${id}`, { method: "PUT", body: JSON.stringify({ name: fd.get("name"), balance: fd.get("balance") }) });
-      await loadServerState(); showToast("Account updated");
-    }, async () => {
-      await api(`/api/accounts/${id}`, { method: "DELETE" });
-      await loadServerState(); showToast("Account deleted");
-    });
-  } else if (e.target.closest(".edit-holding")) {
-    e.stopPropagation();
-    const id = Number(e.target.closest(".edit-holding").dataset.id);
-    const holding = state.holdings.find(h => h.id === id);
-    if (!holding) return;
-    openModal("Edit Holding", `
-      <input name="symbol" value="${escapeHtml(holding.symbol)}" required />
-      <input name="quantity" type="number" step="0.000001" value="${holding.quantity}" required />
-      <input name="cost" type="number" step="0.01" value="${holding.cost}" required />
-      <input name="price" type="number" step="0.01" value="${holding.price}" required />
-    `, async fd => {
-      await api(`/api/holdings/${id}`, { method: "PUT", body: JSON.stringify(Object.fromEntries(fd)) });
-      await loadServerState(); showToast("Holding updated");
-    }, async () => {
-      await api(`/api/holdings/${id}`, { method: "DELETE" });
-      await loadServerState(); showToast("Holding deleted");
-    });
-  } else if (e.target.closest(".edit-tx")) {
-    e.stopPropagation();
-    const id = Number(e.target.closest(".edit-tx").dataset.id);
-    const tx = state.transactions.find(t => t.id === id);
-    if (!tx) return;
-    openModal("Edit Transaction", `
-      <input name="account" value="${escapeHtml(tx.accountName)}" required />
-      <input name="amount" type="number" step="0.01" value="${tx.amount}" required />
-      <input name="category" value="${escapeHtml(tx.category)}" required />
-      <input name="note" value="${escapeHtml(tx.note)}" required />
-    `, async fd => {
-      await api(`/api/transactions/${id}`, { method: "PUT", body: JSON.stringify(Object.fromEntries(fd)) });
-      await loadServerState(); showToast("Transaction updated");
-    }, async () => {
-      await api(`/api/transactions/${id}`, { method: "DELETE" });
-      await loadServerState(); showToast("Transaction deleted");
-    });
-  } else if (e.target.closest(".account-card")) {
-    openAccountDetail(Number(e.target.closest(".account-card").dataset.id));
-  } else if (e.target.closest(".holding-card")) {
-    openHoldingDetail(Number(e.target.closest(".holding-card").dataset.id));
-  } else if (e.target.matches(".confirm-btn")) {
+  if (e.target.matches(".confirm-btn")) {
     const actionId = e.target.closest(".action-prompt").dataset.action;
     handleAgentAction(actionId, "confirm");
   } else if (e.target.matches(".cancel-btn")) {
@@ -575,7 +597,7 @@ document.querySelector("#updatePriceForm").addEventListener("submit", async e =>
 document.querySelector("#addAccountButton").addEventListener("click", () => {
   openModal("New Account", `
     <input name="name" placeholder="Account name" required />
-    <input name="balance" type="number" step="0.01" placeholder="Opening balance" required />
+    <input name="balance" type="number" inputmode="decimal" step="0.01" placeholder="Opening balance" required />
   `, async fd => {
     await api("/api/accounts", { method: "POST", body: JSON.stringify({ name: fd.get("name"), balance: fd.get("balance") }) });
     await loadServerState(); showToast("Account created");
@@ -584,20 +606,37 @@ document.querySelector("#addAccountButton").addEventListener("click", () => {
 
 document.querySelector("#addHoldingButton").addEventListener("click", () => {
   openModal("New Holding", `
-    <input name="symbol" placeholder="Symbol (e.g. AAPL)" required />
-    <input name="quantity" type="number" step="0.000001" placeholder="Quantity" required />
-    <input name="cost" type="number" step="0.01" placeholder="Avg Cost" required />
-    <input name="price" type="number" step="0.01" placeholder="Current Price" required />
+    <input name="symbol" placeholder="Start typing — VWCE, AAPL, BTC..." autocomplete="off" required />
+    <input name="quantity" type="number" inputmode="decimal" step="0.000001" placeholder="Quantity" required />
+    <input name="cost" type="number" inputmode="decimal" step="0.01" placeholder="Purchase price per unit" required />
+    <small class="muted">Pick from the dropdown to ensure the right exchange (e.g. VWCE.DE for Xetra).</small>
   `, async fd => {
-    await api("/api/holdings", { method: "POST", body: JSON.stringify(Object.fromEntries(fd)) });
-    await loadServerState(); showToast("Holding created");
+    const symbol = String(fd.get("symbol")).toUpperCase().trim();
+    const cost = Number(fd.get("cost"));
+    let price;
+    try {
+      price = await fetchLivePrice(symbol);
+    } catch {
+      throw new Error(`Ticker "${symbol}" not found. For non-US ETFs add the exchange suffix (e.g. VWCE.DE).`);
+    }
+    if (!Number.isFinite(price) || price <= 0) {
+      throw new Error(`Ticker "${symbol}" returned no price. Double-check the symbol.`);
+    }
+    await api("/api/holdings", {
+      method: "POST",
+      body: JSON.stringify({ symbol, quantity: fd.get("quantity"), cost, price })
+    });
+    await loadServerState();
+    showToast(`Holding ${symbol} added at live ${money(price)}`);
   });
+  const symbolInput = els.modalFormFields.querySelector('input[name="symbol"]');
+  if (symbolInput) attachTickerAutocomplete(symbolInput, "symbolSuggestions");
 });
 
 document.querySelector("#addTxBtn").addEventListener("click", () => {
   openModal("Manual Transaction", `
     <input name="account" placeholder="Account Name" required />
-    <input name="amount" type="number" step="0.01" placeholder="Amount (negative for outflow)" required />
+    <input name="amount" type="number" inputmode="decimal" step="0.01" placeholder="Amount (negative for outflow)" required />
     <input name="category" placeholder="Category" required />
     <input name="note" placeholder="Note" required />
   `, async fd => {
@@ -617,6 +656,41 @@ document.querySelector("#refreshPricesButton").addEventListener("click", async (
     await loadServerState(); showToast(`Updated ${prices.length} prices`);
   } else { showToast("Live prices unavailable", "error"); }
 });
+
+async function searchTickers(query) {
+  const q = query.trim();
+  if (q.length < 2) return [];
+  const res = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0`);
+  const data = await res.json();
+  return (data.quotes || [])
+    .filter(r => r.symbol && (r.quoteType === "EQUITY" || r.quoteType === "ETF" || r.quoteType === "MUTUALFUND" || r.quoteType === "CRYPTOCURRENCY" || r.quoteType === "INDEX"))
+    .map(r => ({
+      symbol: r.symbol,
+      name: r.shortname || r.longname || "",
+      exchange: r.exchDisp || r.exchange || "",
+      type: r.quoteType
+    }));
+}
+
+function attachTickerAutocomplete(inputEl, listId) {
+  const list = document.createElement("datalist");
+  list.id = listId;
+  inputEl.setAttribute("list", listId);
+  inputEl.parentNode.insertBefore(list, inputEl.nextSibling);
+  let timer = null;
+  inputEl.addEventListener("input", () => {
+    clearTimeout(timer);
+    const q = inputEl.value;
+    timer = setTimeout(async () => {
+      try {
+        const matches = await searchTickers(q);
+        list.innerHTML = matches
+          .map(m => `<option value="${escapeHtml(m.symbol)}">${escapeHtml(m.name)} · ${escapeHtml(m.exchange)} · ${escapeHtml(m.type)}</option>`)
+          .join("");
+      } catch {}
+    }, 250);
+  });
+}
 
 async function fetchLivePrice(symbol) {
   const clean = symbol.toUpperCase(), id = CRYPTO_IDS[clean];
@@ -651,7 +725,15 @@ document.querySelectorAll("[data-tab]").forEach(btn => {
 
 window.addEventListener('resize', () => { setTimeout(render, 10); });
 
+const settingsBackdrop = document.querySelector("#settingsBackdrop");
+function openSettings() { settingsBackdrop.classList.add("active"); }
+function closeSettings() { settingsBackdrop.classList.remove("active"); }
+document.querySelector("#settingsBtn").addEventListener("click", openSettings);
+document.querySelector("#settingsCloseBtn").addEventListener("click", closeSettings);
+settingsBackdrop.addEventListener("click", e => { if (e.target === settingsBackdrop) closeSettings(); });
+
 document.querySelector("#lockButton").addEventListener("click", async () => {
+  closeSettings();
   await api("/api/logout", { method: "POST" }).catch(() => {});
   isAuthenticated = false; showLock();
 });
