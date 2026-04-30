@@ -176,6 +176,13 @@ function money(value) {
   }).format(value || 0);
 }
 
+function compactMoney(value) {
+  return new Intl.NumberFormat("en-BE", {
+    style: "currency", currency: CURRENCY, notation: "compact",
+    maximumFractionDigits: 1
+  }).format(value || 0);
+}
+
 function totalCash() { return state.accounts.reduce((sum, acc) => sum + acc.balance, 0); }
 function cleanCurrency(value) {
   const currency = String(value || "EUR").toUpperCase();
@@ -248,9 +255,15 @@ function render() {
   els.netWorth.textContent = money(worth);
   els.cashTotal.textContent = money(cash);
   els.portfolioTotal.textContent = money(portfolio);
-  els.netWorthDelta.textContent = delta === 0 ? "No movement yet" : `${delta > 0 ? "+" : ""}${money(delta)} since last snapshot`;
+  els.netWorthDelta.textContent = state.snapshots.length > 1
+    ? (delta === 0 ? "No change since last snapshot" : `${delta > 0 ? "+" : ""}${money(delta)} since last snapshot`)
+    : "First snapshot recorded";
   els.netWorthDelta.className = delta >= 0 ? "positive" : "negative";
-  els.netWorth.closest(".metric.primary")?.style.setProperty("--portfolio-share", `${worth > 0 ? Math.min(Math.max((portfolio / worth) * 100, 0), 100) : 0}%`);
+  const portfolioShare = worth > 0 ? Math.min(Math.max((portfolio / worth) * 100, 0), 100) : 0;
+  const netWorthCard = els.netWorth.closest(".metric.primary");
+  netWorthCard?.style.setProperty("--portfolio-share", `${portfolioShare}%`);
+  netWorthCard?.setAttribute("data-ring-label", `Portfolio ${portfolioShare.toFixed(0)}%`);
+  netWorthCard?.setAttribute("title", `Ring shows portfolio share of net worth: ${portfolioShare.toFixed(0)}%`);
 
   renderPortfolioSummary();
   renderAccounts();
@@ -295,15 +308,18 @@ function renderPortfolioGrowth() {
   const pnlPercent = cost ? (pnl / cost) * 100 : 0;
   const points = filterPointsForRange(buildPortfolioGrowthPoints(), chartRanges.portfolio);
   const max = Math.max(...points.flatMap((point) => [point.value, point.cost]), 1);
+  const plot = { left: 13, right: 4, top: 8, bottom: 18 };
+  const plotWidth = 100 - plot.left - plot.right;
+  const plotHeight = 100 - plot.top - plot.bottom;
   const valueBars = points.map((point, i) => {
-    const x = points.length === 1 ? 100 : (i / (points.length - 1)) * 100;
-    const y = 100 - (point.value / max) * 88;
-    return `${x},${Math.max(y, 6)}`;
+    const x = plot.left + (points.length === 1 ? plotWidth : (i / (points.length - 1)) * plotWidth);
+    const y = plot.top + (1 - (point.value / max)) * plotHeight;
+    return `${x},${Math.max(y, plot.top)}`;
   });
   const costBars = points.map((point, i) => {
-    const x = points.length === 1 ? 100 : (i / (points.length - 1)) * 100;
-    const y = 100 - (point.cost / max) * 88;
-    return `${x},${Math.max(y, 6)}`;
+    const x = plot.left + (points.length === 1 ? plotWidth : (i / (points.length - 1)) * plotWidth);
+    const y = plot.top + (1 - (point.cost / max)) * plotHeight;
+    return `${x},${Math.max(y, plot.top)}`;
   });
 
   els.portfolioXray.innerHTML = `
@@ -315,7 +331,11 @@ function renderPortfolioGrowth() {
           <article><span>Profit</span><strong class="${pnl >= 0 ? "positive" : "negative"}">${pnl >= 0 ? "+" : ""}${money(pnl)} · ${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(2)}%</strong></article>
         </div>
         <div class="growth-chart" aria-label="Invested cash and current portfolio value over time">
+          <div class="growth-y-label top">${compactMoney(max)}</div>
+          <div class="growth-y-label bottom">${money(0)}</div>
           <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+            <line class="growth-axis-line" x1="${plot.left}" y1="${plot.top}" x2="${plot.left}" y2="${100 - plot.bottom}"></line>
+            <line class="growth-axis-line" x1="${plot.left}" y1="${100 - plot.bottom}" x2="${100 - plot.right}" y2="${100 - plot.bottom}"></line>
             <polyline class="growth-cost-line" points="${costBars.join(" ")}"></polyline>
             <polyline class="growth-value-line" points="${valueBars.join(" ")}"></polyline>
           </svg>
@@ -631,10 +651,6 @@ function renderLineChart(target, height, points = buildNetWorthTrend()) {
   const width = target.clientWidth || 640;
   target.setAttribute("viewBox", `0 0 ${width} ${height}`);
   if (width === 0) return; // Hidden
-  if (points.length < 2) {
-    target.innerHTML = `<line x1="0" y1="${height / 2}" x2="${width}" y2="${height / 2}" stroke="#94a3b8" stroke-width="2" stroke-dasharray="4,4" />`;
-    return;
-  }
   const values = points.map(p => p.value);
   const low = Math.min(...values);
   const high = Math.max(...values);
@@ -642,19 +658,32 @@ function renderLineChart(target, height, points = buildNetWorthTrend()) {
   const min = low - padding;
   const max = high + padding;
   const span = max - min || 1;
+  const axis = { left: 54, right: 10, top: 14, bottom: 28 };
+  const plotWidth = Math.max(width - axis.left - axis.right, 1);
+  const plotHeight = Math.max(height - axis.top - axis.bottom, 1);
   const chartData = points.map((p, i) => {
-    const x = (i / (points.length - 1)) * width;
-    const y = height - ((p.value - min) / span) * (height - 24) - 12;
+    const x = axis.left + (i / Math.max(points.length - 1, 1)) * plotWidth;
+    const y = axis.top + (1 - ((p.value - min) / span)) * plotHeight;
     return { ...p, x, y };
   });
   const coords = chartData.map((point) => `${point.x},${point.y}`);
+  const yTicks = [max, min + span / 2, min];
   target._chartData = chartData;
   target._chartWidth = width;
   target._chartHeight = height;
   target.innerHTML = `
     <defs><linearGradient id="g${target.id}" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#059669"/></linearGradient></defs>
+    ${yTicks.map((tick) => {
+      const y = axis.top + (1 - ((tick - min) / span)) * plotHeight;
+      return `<line x1="${axis.left}" y1="${y}" x2="${width - axis.right}" y2="${y}" stroke="#dbe6dc" stroke-width="1" />
+        <text x="${axis.left - 8}" y="${y + 4}" text-anchor="end" fill="#6f7c72" font-size="11" font-weight="700">${compactMoney(tick)}</text>`;
+    }).join("")}
+    <line x1="${axis.left}" y1="${axis.top}" x2="${axis.left}" y2="${height - axis.bottom}" stroke="#9fb0a4" stroke-width="1.25" />
+    <line x1="${axis.left}" y1="${height - axis.bottom}" x2="${width - axis.right}" y2="${height - axis.bottom}" stroke="#9fb0a4" stroke-width="1.25" />
+    <text x="${axis.left}" y="${height - 6}" text-anchor="start" fill="#6f7c72" font-size="11" font-weight="700">${formatChartDate(points[0].date)}</text>
+    <text x="${width - axis.right}" y="${height - 6}" text-anchor="end" fill="#6f7c72" font-size="11" font-weight="700">${formatChartDate(points.at(-1).date)}</text>
     <polyline points="${coords.join(" ")}" fill="none" stroke="url(#g${target.id})" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
-    <line class="chart-crosshair" y1="8" y2="${height - 8}" stroke="#0f172a" stroke-width="1.5" stroke-dasharray="3,4" opacity="0" />
+    <line class="chart-crosshair" y1="${axis.top}" y2="${height - axis.bottom}" stroke="#0f172a" stroke-width="1.5" stroke-dasharray="3,4" opacity="0" />
     <circle class="chart-marker" r="5" fill="#ffffff" stroke="#059669" stroke-width="3" opacity="0" />
   `;
   setupChartInteraction(target);
