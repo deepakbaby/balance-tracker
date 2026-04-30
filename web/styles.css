@@ -19,8 +19,8 @@
   --shadow-lg: 0 18px 46px rgba(16, 32, 24, 0.12);
   --shadow-float: 0 28px 60px rgba(16, 32, 24, 0.18);
   --glass: rgba(255, 255, 255, 0.72);
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
-  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display: "SF Pro Display", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --border-radius-sm: 8px;
   --border-radius-md: 12px;
   --border-radius-lg: 16px;
@@ -42,7 +42,7 @@ body {
   background-attachment: fixed;
   color: var(--ink);
   font-family: var(--font-sans);
-  font-feature-settings: "tnum";
+  font-feature-settings: normal;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -150,8 +150,9 @@ button:active {
   margin: 0;
   font-size: 34px;
   line-height: 1.1;
-  font-weight: 850;
-  letter-spacing: -0.022em;
+  font-family: var(--font-display);
+  font-weight: 660;
+  letter-spacing: -0.035em;
 }
 
 .section-head h2, .chat-header h2, .lock-card h2, .modal h2 {
@@ -218,7 +219,7 @@ button:active {
   color: var(--ink);
   text-align: left;
   padding: 0 12px;
-  font-weight: 700;
+  font-weight: 560;
 }
 
 .portfolio-menu button:hover {
@@ -229,7 +230,7 @@ button:active {
   margin: 0 0 4px;
   color: var(--accent-strong);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -349,7 +350,7 @@ button:active {
 .metric span, .metric small, .section-head span {
   color: var(--muted);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .metric.primary span, .metric.primary small {
@@ -360,7 +361,7 @@ button:active {
   display: block;
   font-size: 26px;
   font-family: var(--font-display);
-  font-weight: 760;
+  font-weight: 620;
   line-height: 1.15;
   letter-spacing: -0.035em;
   font-variant-numeric: tabular-nums;
@@ -370,7 +371,7 @@ button:active {
 
 .metric.primary strong {
   font-size: clamp(40px, 11vw, 58px);
-  font-weight: 780;
+  font-weight: 660;
   letter-spacing: -0.055em;
   max-width: 100%;
 }
@@ -451,13 +452,13 @@ button:active {
 .section-head { margin-bottom: 16px; }
 .section-head.tall { margin: 16px 0 20px; }
 .holdings-head { margin: 18px 0 10px; }
-.section-head h2, .chat-header h2 { font-size: 21px; font-weight: 850; }
+.section-head h2, .chat-header h2 { font-family: var(--font-display); font-size: 21px; font-weight: 640; }
 
 .icon-button, .primary-button, .text-button, .inline-form button, .holding-form button, .chat-box button, .lock-card button, .modal button {
   min-height: 44px;
   border: 0;
   border-radius: var(--border-radius-md);
-  font-weight: 600;
+  font-weight: 560;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -507,7 +508,7 @@ button:active {
   background: transparent;
   color: var(--muted);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   letter-spacing: 0.01em;
 }
 
@@ -551,7 +552,7 @@ button:active {
   box-shadow: var(--shadow);
   color: var(--ink);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 560;
   text-align: center;
   pointer-events: none;
   opacity: 0;
@@ -595,7 +596,7 @@ button:active {
 }
 
 .activity-line strong, .account-top strong, .holding-top strong {
-  font-weight: 700;
+  font-weight: 560;
   overflow-wrap: anywhere;
 }
 
@@ -634,7 +635,7 @@ button:active {
 .insight-card span, .signal-card span {
   color: var(--muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 560;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -642,7 +643,7 @@ button:active {
 .insight-card strong {
   font-family: var(--font-display);
   font-size: 26px;
-  font-weight: 760;
+  font-weight: 620;
   line-height: 1.1;
   letter-spacing: -0.035em;
   font-variant-numeric: tabular-nums;
@@ -659,7 +660,7 @@ button:active {
   background: rgba(255, 255, 255, 0.76);
 }
 
-.signal-card strong { line-height: 1.3; font-weight: 700; }
+.signal-card strong { line-height: 1.3; font-weight: 560; }
 
 .inline-form, .holding-form {
   display: grid;
@@ -789,7 +790,7 @@ input:focus, select:focus, textarea:focus {
   display: block;
   color: var(--muted);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 560;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -799,7 +800,7 @@ input:focus, select:focus, textarea:focus {
   margin-top: 8px;
   font-family: var(--font-display);
   font-size: 42px;
-  font-weight: 780;
+  font-weight: 660;
   line-height: 1;
   letter-spacing: -0.055em;
   font-variant-numeric: tabular-nums;
@@ -811,7 +812,7 @@ input:focus, select:focus, textarea:focus {
   display: block;
   margin-top: 10px;
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 520;
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
 }
@@ -860,7 +861,7 @@ input:focus, select:focus, textarea:focus {
   display: block;
   color: var(--muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 560;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -870,7 +871,7 @@ input:focus, select:focus, textarea:focus {
   margin-top: 10px;
   font-family: var(--font-display);
   font-size: 17px;
-  font-weight: 700;
+  font-weight: 560;
   line-height: 1.15;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
@@ -925,7 +926,7 @@ input:focus, select:focus, textarea:focus {
   display: block;
   color: var(--muted);
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 560;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -973,7 +974,7 @@ input:focus, select:focus, textarea:focus {
   left: 0;
   color: var(--muted);
   font-size: 9px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -1004,7 +1005,7 @@ input:focus, select:focus, textarea:focus {
   margin-top: 8px;
   color: var(--muted);
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 560;
 }
 
 .growth-legend {
@@ -1049,7 +1050,7 @@ input:focus, select:focus, textarea:focus {
   display: block;
   color: var(--muted);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 560;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
@@ -1188,7 +1189,7 @@ input:focus, select:focus, textarea:focus {
   height: 44px;
   padding: 0 18px;
   border-radius: 999px;
-  font-weight: 700;
+  font-weight: 560;
   opacity: 1;
 }
 
@@ -1443,7 +1444,7 @@ input:focus, select:focus, textarea:focus {
   background: transparent;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 560;
   letter-spacing: 0.02em;
 }
 
@@ -1543,7 +1544,7 @@ input:focus, select:focus, textarea:focus {
 .sheet h2 {
   margin: 0 0 6px;
   font-size: 17px;
-  font-weight: 700;
+  font-weight: 600;
   text-align: center;
 }
 
