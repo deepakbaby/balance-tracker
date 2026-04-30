@@ -334,8 +334,10 @@ class Handler(BaseHTTPRequestHandler):
                     cookie_str = f"balance_session={token}; HttpOnly; SameSite=Lax; Path=/; Max-Age={SESSION_TTL}"
                     if ENVIRONMENT == "production": cookie_str += "; Secure"
                     self.send_header("Set-Cookie", cookie_str)
+                    payload = json.dumps({"ok": True}).encode("utf-8")
+                    self.send_header("Content-Length", str(len(payload)))
                     self.send_headers()
-                    self.wfile.write(json.dumps({"ok": True}).encode())
+                    self.wfile.write(payload)
                     return
                 else:
                     FAILED_LOGINS[req_ip] = FAILED_LOGINS.get(req_ip, 0) + 1
@@ -349,8 +351,10 @@ class Handler(BaseHTTPRequestHandler):
             if route == "/api/logout":
                 self.send_response(200)
                 self.send_header("Set-Cookie", "balance_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0")
+                payload = json.dumps({"ok": True}).encode("utf-8")
+                self.send_header("Content-Length", str(len(payload)))
                 self.send_headers()
-                self.wfile.write(json.dumps({"ok": True}).encode())
+                self.wfile.write(payload)
                 return
             if route == "/api/accounts":
                 cur.execute("INSERT INTO accounts (name, balance) VALUES (%s, %s)", (body["name"], float(body.get("balance", 0))))
@@ -476,10 +480,11 @@ class Handler(BaseHTTPRequestHandler):
         return False
 
     def json(self, data, status=200):
+        payload = json.dumps(data).encode('utf-8') if data is not None else b"{}"
         self.send_response(status)
+        self.send_header("Content-Length", str(len(payload)))
         self.send_headers()
-        payload = json.dumps(data) if data is not None else "{}"
-        self.wfile.write(payload.encode('utf-8'))
+        self.wfile.write(payload)
 
     def send_headers(self):
         origin = self.headers.get("Origin")
