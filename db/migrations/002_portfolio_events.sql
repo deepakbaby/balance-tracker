@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS portfolio_events (
     symbol VARCHAR(50),
     quantity DECIMAL(20, 8),
     price DECIMAL(20, 8),
+    currency VARCHAR(3) NOT NULL DEFAULT 'EUR',
     cash_delta DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
     note TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

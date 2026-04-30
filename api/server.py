@@ -158,13 +158,24 @@ def find_or_create_account(cur, name):
     return dict(cur.fetchone())
 
 
-def upsert_holding(cur, symbol, quantity, cost, price, use_portfolio_cash=False):
+def clean_currency(value):
+    currency = str(value or "EUR").upper().strip()
+    return currency if currency in {"EUR", "USD"} else "EUR"
+
+
+def infer_currency(symbol):
+    return "EUR" if "." in str(symbol or "") else "USD"
+
+
+def upsert_holding(cur, symbol, quantity, cost, price, use_portfolio_cash=False, currency=None):
+    currency = clean_currency(currency or infer_currency(symbol))
     cur.execute("SELECT * FROM holdings WHERE symbol = %s", (symbol,))
     existing = cur.fetchone()
     if existing:
         is_deleted = existing.get("deleted_at") is not None
         existing_qty = 0.0 if is_deleted else float(existing["quantity"])
         existing_cost = 0.0 if is_deleted else float(existing["cost"])
+        holding_currency = clean_currency(existing.get("currency") or currency)
         if quantity > 0:
             total_qty = existing_qty + quantity
             avg_cost = ((existing_qty * existing_cost) + (quantity * cost)) / total_qty if total_qty > 0 else cost
@@ -173,23 +184,24 @@ def upsert_holding(cur, symbol, quantity, cost, price, use_portfolio_cash=False)
             avg_cost = existing_cost
         new_price = price if price > 0 else float(existing["price"])
         cur.execute(
-            "UPDATE holdings SET quantity = %s, cost = %s, price = %s, last_price_at = CURRENT_TIMESTAMP, deleted_at = NULL WHERE id = %s",
-            (total_qty, avg_cost, new_price, existing["id"]),
+            "UPDATE holdings SET quantity = %s, cost = %s, price = %s, currency = %s, last_price_at = CURRENT_TIMESTAMP, deleted_at = NULL WHERE id = %s",
+            (total_qty, avg_cost, new_price, holding_currency, existing["id"]),
         )
     else:
+        holding_currency = currency
         cur.execute(
-            "INSERT INTO holdings (symbol, quantity, cost, price) VALUES (%s, %s, %s, %s)",
-            (symbol, quantity, cost, price),
+            "INSERT INTO holdings (symbol, quantity, cost, price, currency) VALUES (%s, %s, %s, %s, %s)",
+            (symbol, quantity, cost, price, holding_currency),
         )
     if quantity > 0:
-        funded_amount = min(get_portfolio_cash(cur), quantity * cost)
+        funded_amount = min(get_portfolio_cash(cur), to_eur(quantity * cost, holding_currency))
         cash_delta = -funded_amount if use_portfolio_cash else 0
-        record_portfolio_event(cur, "buy", cash_delta, symbol, quantity, cost, f"Bought {quantity} {symbol} @ {cost}")
+        record_portfolio_event(cur, "buy", cash_delta, symbol, quantity, cost, holding_currency, f"Bought {quantity} {symbol} @ {cost}")
 
-def record_portfolio_event(cur, event_type, cash_delta=0, symbol=None, quantity=None, price=None, note=None):
+def record_portfolio_event(cur, event_type, cash_delta=0, symbol=None, quantity=None, price=None, currency="EUR", note=None):
     cur.execute(
-        "INSERT INTO portfolio_events (event_type, cash_delta, symbol, quantity, price, note) VALUES (%s, %s, %s, %s, %s, %s)",
-        (event_type, cash_delta, symbol, quantity, price, note),
+        "INSERT INTO portfolio_events (event_type, cash_delta, symbol, quantity, price, currency, note) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+        (event_type, cash_delta, symbol, quantity, price, clean_currency(currency), note),
     )
 
 
@@ -212,6 +224,20 @@ def fetch_market_price(symbol):
     if not isinstance(price, (int, float)) or price <= 0:
         raise ValueError("Price missing")
     return float(price)
+
+
+def get_fx_rates():
+    rates = {"EUR": 1.0, "USD": 0.92}
+    try:
+        rates["USD"] = fetch_market_price("USDEUR=X")
+    except Exception:
+        pass
+    return rates
+
+
+def to_eur(value, currency, rates=None):
+    rates = rates or get_fx_rates()
+    return float(value or 0) * rates.get(clean_currency(currency), 1.0)
 
 
 def find_account(cur, name):
@@ -398,6 +424,7 @@ def execute_agent_action(cur, action, payload):
             float(payload.get("cost", 0)),
             float(payload.get("price", 0)),
             bool(payload.get("use_portfolio_cash")),
+            payload.get("currency"),
         )
         return None
     if action == "create_account":
@@ -449,9 +476,10 @@ def execute_agent_action(cur, action, payload):
         ex_qty = float(existing["quantity"])
         if qty > ex_qty:
             return f"Cannot sell {qty} {symbol}; only {ex_qty} held."
+        currency = clean_currency(payload.get("currency") or existing.get("currency") or "EUR")
         sale_price = float(payload.get("price") or existing["price"])
-        proceeds = qty * sale_price
-        realized = (sale_price - float(existing["cost"])) * qty
+        proceeds = to_eur(qty * sale_price, currency)
+        realized = to_eur((sale_price - float(existing["cost"])) * qty, currency)
         new_qty = ex_qty - qty
         if new_qty <= 0:
             cur.execute("UPDATE holdings SET deleted_at = CURRENT_TIMESTAMP WHERE id = %s", (existing["id"],))
@@ -463,10 +491,10 @@ def execute_agent_action(cur, action, payload):
             cur.execute("UPDATE accounts SET balance = balance + %s WHERE id = %s", (proceeds, account["id"]))
             cur.execute("INSERT INTO transactions (account_id, amount, category, note) VALUES (%s, %s, %s, %s)",
                         (account["id"], proceeds, "investment", f"sell {qty} {symbol} @ {sale_price}"))
-            record_portfolio_event(cur, "sell_to_account", 0, symbol, qty, sale_price, f"Sold {qty} {symbol}, credited {credit_name}")
+            record_portfolio_event(cur, "sell_to_account", 0, symbol, qty, sale_price, currency, f"Sold {qty} {symbol}, credited {credit_name}")
         else:
-            record_portfolio_event(cur, "sell", proceeds, symbol, qty, sale_price, f"Sold {qty} {symbol}")
-        return f"Sold {qty} {symbol} @ {money(sale_price)}. Proceeds {money(proceeds)}, realised PnL {money(realized)}."
+            record_portfolio_event(cur, "sell", proceeds, symbol, qty, sale_price, currency, f"Sold {qty} {symbol}")
+        return f"Sold {qty} {symbol} @ {currency} {sale_price:,.2f}. Proceeds {money(proceeds)}, realised PnL {money(realized)}."
     if action == "move_cash_to_portfolio":
         amount = float(payload.get("amount", 0) or 0)
         account_name = payload.get("account") or payload.get("from_account")
@@ -600,10 +628,13 @@ def mock_openclaw_response(text):
 def get_totals(cur):
     cur.execute("SELECT COALESCE(SUM(balance), 0) value FROM accounts WHERE deleted_at IS NULL")
     cash = float(cur.fetchone()["value"])
-    cur.execute("SELECT COALESCE(SUM(quantity * price), 0) value FROM holdings WHERE deleted_at IS NULL")
-    portfolio = float(cur.fetchone()["value"])
-    cur.execute("SELECT COALESCE(SUM(quantity * cost), 0) value FROM holdings WHERE deleted_at IS NULL")
-    cost = float(cur.fetchone()["value"])
+    rates = get_fx_rates()
+    cur.execute("SELECT quantity, price, cost, currency FROM holdings WHERE deleted_at IS NULL")
+    portfolio = 0
+    cost = 0
+    for row in cur.fetchall():
+        portfolio += to_eur(float(row["quantity"]) * float(row["price"]), row.get("currency"), rates)
+        cost += to_eur(float(row["quantity"]) * float(row["cost"]), row.get("currency"), rates)
     portfolio_cash = get_portfolio_cash(cur)
     portfolio_total = portfolio + portfolio_cash
     return {"cash": cash, "portfolio": portfolio_total, "portfolio_assets": portfolio, "portfolio_cash": portfolio_cash, "cost": cost, "pnl": portfolio - cost, "net_worth": cash + portfolio_total}
@@ -662,6 +693,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.json({"symbol": symbol.upper(), "price": fetch_market_price(symbol)})
                 except Exception:
                     return self.json({"error": f"Ticker {symbol.upper() or '?'} returned no live price"}, 404)
+            if route == "/api/fx":
+                return self.json({"base": "EUR", "rates": get_fx_rates()})
             if route == "/api/holdings":
                 cur.execute("SELECT * FROM holdings WHERE deleted_at IS NULL ORDER BY symbol")
                 
@@ -669,6 +702,7 @@ class Handler(BaseHTTPRequestHandler):
                     d = dict(row)
                     d["id"] = str(d["id"])
                     for field in ["quantity", "cost", "price"]: d[field] = float(d[field])
+                    d["currency"] = clean_currency(d.get("currency"))
                     if d.get("created_at"): d["created_at"] = str(d["created_at"])
                     if d.get("last_price_at"): d["last_price_at"] = str(d["last_price_at"])
                     return d
@@ -775,6 +809,7 @@ class Handler(BaseHTTPRequestHandler):
                     float(body["cost"]),
                     float(body["price"]),
                     bool(body.get("use_portfolio_cash")),
+                    body.get("currency"),
                 )
                 return self.json({"ok": True}, 201)
             if route == "/api/prices":
@@ -837,8 +872,8 @@ class Handler(BaseHTTPRequestHandler):
                                 (body['name'], float(body.get('balance', 0)), item_id))
                     return self.json({"ok": True})
                 elif resource == 'holdings':
-                    cur.execute("UPDATE holdings SET symbol = %s, quantity = %s, cost = %s, price = %s WHERE id = %s", 
-                        (body['symbol'].upper(), float(body['quantity']), float(body['cost']), float(body['price']), item_id))
+                    cur.execute("UPDATE holdings SET symbol = %s, quantity = %s, cost = %s, price = %s, currency = %s WHERE id = %s", 
+                        (body['symbol'].upper(), float(body['quantity']), float(body['cost']), float(body['price']), clean_currency(body.get("currency")), item_id))
                     return self.json({"ok": True})
                 elif resource == 'transactions':
                     account = find_or_create_account(cur, body["account"])

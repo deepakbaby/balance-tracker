@@ -27,6 +27,7 @@ CREATE TABLE holdings (
   quantity REAL NOT NULL,
   cost REAL NOT NULL,
   price REAL NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'EUR',
   last_price_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -53,6 +54,7 @@ CREATE TABLE portfolio_events (
   symbol TEXT,
   quantity REAL,
   price REAL,
+  currency TEXT NOT NULL DEFAULT 'EUR',
   cash_delta REAL NOT NULL DEFAULT 0,
   note TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

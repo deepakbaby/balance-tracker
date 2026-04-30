@@ -1,6 +1,6 @@
 const STORAGE_KEY = "deepak.balance-tracker.snapshots.v1";
 const API_BASE = localStorage.getItem("balance-api-base") || (location.hostname === "localhost" ? "http://localhost:8787" : "");
-const CURRENCY = localStorage.getItem("balance-currency") || "EUR";
+const CURRENCY = "EUR";
 const CRYPTO_IDS = {
   BTC: "bitcoin", ETH: "ethereum", SOL: "solana", ADA: "cardano",
   XRP: "ripple", DOGE: "dogecoin", AVAX: "avalanche-2", DOT: "polkadot",
@@ -16,7 +16,7 @@ const ACCOUNT_COLORS = [
 ];
 
 const seedState = {
-  accounts: [], transactions: [], holdings: [], portfolioCash: 0, portfolioEvents: [],
+  accounts: [], transactions: [], holdings: [], portfolioCash: 0, portfolioEvents: [], fxRates: { EUR: 1, USD: 0.92 },
   chats: [{ id: crypto.randomUUID(), role: "agent", text: "Ready.", createdAt: new Date().toISOString() }],
   snapshots: []
 };
@@ -139,13 +139,14 @@ async function api(path, options = {}) {
 }
 
 async function loadServerState() {
-  const [accounts, transactions, holdings, chats, analysis, portfolio] = await Promise.all([
+  const [accounts, transactions, holdings, chats, analysis, portfolio, fx] = await Promise.all([
     api("/api/accounts"),
     api("/api/transactions"),
     api("/api/holdings"),
     api("/api/chat"),
     api("/api/analysis"),
-    api("/api/portfolio").catch(() => ({ cash: 0, events: [] }))
+    api("/api/portfolio").catch(() => ({ cash: 0, events: [] })),
+    api("/api/fx").catch(() => ({ rates: seedState.fxRates }))
   ]);
   state.accounts = accounts.map(a => ({ id: a.id, name: a.name, balance: Number(a.balance || 0), createdAt: a.created_at }));
   state.transactions = transactions.map(tx => ({
@@ -154,7 +155,7 @@ async function loadServerState() {
   })).reverse();
   state.holdings = holdings.map(h => ({
     id: h.id, symbol: h.symbol, quantity: Number(h.quantity || 0), cost: Number(h.cost || 0),
-    price: Number(h.price || 0), lastPriceAt: h.last_price_at, createdAt: h.created_at
+    price: Number(h.price || 0), currency: cleanCurrency(h.currency), lastPriceAt: h.last_price_at, createdAt: h.created_at
   }));
   state.chats = chats.length ? chats.map(c => ({ 
     id: c.id, role: c.role, text: c.text, createdAt: c.created_at, 
@@ -163,6 +164,7 @@ async function loadServerState() {
   state.analysis = analysis;
   state.portfolioCash = Number(portfolio.cash || 0);
   state.portfolioEvents = portfolio.events || [];
+  state.fxRates = { ...seedState.fxRates, ...(fx.rates || {}) };
   render();
 }
 
@@ -174,9 +176,28 @@ function money(value) {
 }
 
 function totalCash() { return state.accounts.reduce((sum, acc) => sum + acc.balance, 0); }
-function portfolioAssetValue() { return state.holdings.reduce((sum, h) => sum + h.quantity * h.price, 0); }
+function cleanCurrency(value) {
+  const currency = String(value || "EUR").toUpperCase();
+  return currency === "USD" ? "USD" : "EUR";
+}
+function toEur(value, currency = "EUR") { return (Number(value) || 0) * (state.fxRates?.[cleanCurrency(currency)] || 1); }
+function currencyMoney(value, currency = "EUR") {
+  return new Intl.NumberFormat("en-BE", {
+    style: "currency", currency: cleanCurrency(currency),
+    maximumFractionDigits: Math.abs(value) >= 1000 ? 0 : 2
+  }).format(value || 0);
+}
+function holdingValueEur(h) { return toEur(h.quantity * h.price, h.currency); }
+function holdingCostEur(h) { return toEur(h.quantity * h.cost, h.currency); }
+function holdingPnlEur(h) { return holdingValueEur(h) - holdingCostEur(h); }
+function inferCurrency(symbol) { return String(symbol || "").includes(".") ? "EUR" : "USD"; }
+function currencyOptions(selected = "EUR") {
+  const currency = cleanCurrency(selected);
+  return `<option value="EUR" ${currency === "EUR" ? "selected" : ""}>EUR</option><option value="USD" ${currency === "USD" ? "selected" : ""}>USD</option>`;
+}
+function portfolioAssetValue() { return state.holdings.reduce((sum, h) => sum + holdingValueEur(h), 0); }
 function portfolioValue() { return portfolioAssetValue() + Math.max(state.portfolioCash || 0, 0); }
-function portfolioCost() { return state.holdings.reduce((sum, h) => sum + h.quantity * h.cost, 0); }
+function portfolioCost() { return state.holdings.reduce((sum, h) => sum + holdingCostEur(h), 0); }
 function portfolioPnl() { return portfolioAssetValue() - portfolioCost(); }
 function portfolioPnlPercent() { const cost = portfolioCost(); return cost ? (portfolioPnl() / cost) * 100 : 0; }
 function netWorth() { return totalCash() + portfolioValue(); }
@@ -226,7 +247,7 @@ function renderPortfolioSummary() {
   const lastUpdate = state.holdings.map(h => h.lastPriceAt).filter(Boolean).sort().at(-1);
   els.priceStatus.textContent = lastUpdate ? `Updated ${timeAgo(lastUpdate)}` : "Manual prices";
 
-  const best = state.holdings.map(h => ({ symbol: h.symbol, pnl: (h.price - h.cost) * h.quantity })).sort((a, b) => b.pnl - a.pnl)[0];
+  const best = state.holdings.map(h => ({ symbol: h.symbol, pnl: holdingPnlEur(h) })).sort((a, b) => b.pnl - a.pnl)[0];
   els.portfolioKpis.innerHTML = `
     <article class="kpi-pill"><span>Invested</span><strong>${money(cost)}</strong></article>
     <article class="kpi-pill"><span>Return</span><strong class="${pnl >= 0 ? 'positive' : 'negative'}">${pnlPercent >= 0 ? '+' : ''}${pnlPercent.toFixed(2)}%</strong></article>
@@ -317,8 +338,8 @@ function buildPortfolioGrowthPoints() {
   const today = new Date().toISOString().slice(0, 10);
   const buckets = state.holdings.reduce((map, holding) => {
     const date = dateKey(holding.createdAt) || today;
-    const current = Number(holding.quantity || 0) * Number(holding.price || 0);
-    const invested = Number(holding.quantity || 0) * Number(holding.cost || 0);
+    const current = holdingValueEur(holding);
+    const invested = holdingCostEur(holding);
     const bucket = map.get(date) || { value: 0, cost: 0 };
     bucket.value += current;
     bucket.cost += invested;
@@ -374,19 +395,19 @@ function renderHoldings() {
     return;
   }
   els.holdingList.innerHTML = state.holdings.map(h => {
-    const value = h.quantity * h.price, pnl = value - (h.quantity * h.cost);
-    const pnlPercent = h.cost ? (pnl / (h.quantity * h.cost)) * 100 : 0;
+    const value = holdingValueEur(h), pnl = holdingPnlEur(h), cost = holdingCostEur(h);
+    const pnlPercent = cost ? (pnl / cost) * 100 : 0;
     return `
       <article class="holding-row" data-id="${h.id}">
         <div class="holding-top">
-          <strong>${escapeHtml(h.symbol)}</strong>
+          <strong>${escapeHtml(h.symbol)} <small class="muted">${h.currency}</small></strong>
           <div class="card-value-actions">
             <strong>${money(value)}</strong>
             <button class="action-btn edit-holding" data-id="${h.id}" title="Edit holding" aria-label="Edit ${escapeHtml(h.symbol)}">✎</button>
           </div>
         </div>
         <div class="holding-meta">
-          <small>${h.quantity} units at ${money(h.price)}</small>
+          <small>${h.quantity} units at ${currencyMoney(h.price, h.currency)}</small>
           <small class="${pnl >= 0 ? "positive" : "negative"}">${pnl >= 0 ? "+" : ""}${money(pnl)} (${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(2)}%)</small>
         </div>
       </article>`;
@@ -455,7 +476,7 @@ function renderInsights() {
   els.investedShare.textContent = `${investedShare}%`;
   els.investedShare.className = investedShare >= 70 ? "positive" : "";
   const topHolding = state.holdings
-    .map(h => ({ symbol: h.symbol, value: h.quantity * h.price }))
+    .map(h => ({ symbol: h.symbol, value: holdingValueEur(h) }))
     .sort((a, b) => b.value - a.value)[0];
   els.topHolding.textContent = topHolding ? `${topHolding.symbol} · ${money(topHolding.value)}` : "--";
   const previousWorth = state.snapshots.length > 1 ? state.snapshots[state.snapshots.length - 2].value : netWorth();
@@ -762,6 +783,7 @@ function openEditHolding(id) {
     <input name="quantity" type="number" inputmode="decimal" step="0.000001" value="${holding.quantity}" required />
     <input name="cost" type="number" inputmode="decimal" step="0.01" value="${holding.cost}" required />
     <input name="price" type="number" inputmode="decimal" step="0.01" value="${holding.price}" required />
+    <select name="currency" aria-label="Currency">${currencyOptions(holding.currency)}</select>
   `, async fd => {
     await api(`/api/holdings/${id}`, { method: "PUT", body: JSON.stringify(Object.fromEntries(fd)) });
     await loadServerState(); showToast("Holding updated");
@@ -855,13 +877,13 @@ function openHoldingDetail(id) {
   const h = state.holdings.find(x => x.id === id);
   if (!h) return;
   document.querySelector("#holdingDetailTitle").textContent = h.symbol;
-  document.querySelector("#holdingDetailValue").textContent = money(h.quantity * h.price);
-  const pnl = (h.quantity * h.price) - (h.quantity * h.cost);
+  document.querySelector("#holdingDetailValue").textContent = money(holdingValueEur(h));
+  const pnl = holdingPnlEur(h);
   document.querySelector("#holdingDetailPnl").textContent = `${pnl >= 0 ? '+' : ''}${money(pnl)}`;
   document.querySelector("#holdingDetailPnl").className = pnl >= 0 ? "positive" : "negative";
   document.querySelector("#holdingDetailQty").textContent = h.quantity;
-  document.querySelector("#holdingDetailPrice").textContent = money(h.price);
-  document.querySelector("#holdingDetailCost").textContent = money(h.cost);
+  document.querySelector("#holdingDetailPrice").textContent = currencyMoney(h.price, h.currency);
+  document.querySelector("#holdingDetailCost").textContent = currencyMoney(h.cost, h.currency);
   document.querySelector("#holdingDetailPriceDate").textContent = h.lastPriceAt ? `Updated ${new Date(h.lastPriceAt).toLocaleString()}` : "Manual";
   
   els.holdingDetailView.dataset.id = id;
@@ -910,6 +932,7 @@ function openBuyHoldingModal() {
     <input name="quantity" type="number" inputmode="decimal" step="0.000001" placeholder="Quantity" required />
     <input name="cost" type="number" inputmode="decimal" step="0.01" placeholder="Purchase price per unit" required />
     <input name="price" type="number" inputmode="decimal" step="0.01" placeholder="Current price (optional)" />
+    <select name="currency" aria-label="Currency">${currencyOptions("USD")}</select>
     <label class="cash-toggle">
       <input name="use_portfolio_cash" type="checkbox" />
       <span>
@@ -921,6 +944,7 @@ function openBuyHoldingModal() {
     const symbol = String(fd.get("symbol")).toUpperCase().trim();
     const cost = Number(fd.get("cost"));
     const manualPrice = Number(fd.get("price"));
+    const currency = cleanCurrency(fd.get("currency"));
     const usePortfolioCash = fd.get("use_portfolio_cash") === "on";
     let price;
     try {
@@ -933,13 +957,19 @@ function openBuyHoldingModal() {
     }
     await api("/api/holdings", {
       method: "POST",
-      body: JSON.stringify({ symbol, quantity: fd.get("quantity"), cost, price, use_portfolio_cash: usePortfolioCash })
+      body: JSON.stringify({ symbol, quantity: fd.get("quantity"), cost, price, currency, use_portfolio_cash: usePortfolioCash })
     });
     await loadServerState();
-    showToast(`Holding ${symbol} added at live ${money(price)}`);
+    showToast(`Holding ${symbol} added at ${currencyMoney(price, currency)}`);
   });
   const symbolInput = els.modalFormFields.querySelector('input[name="symbol"]');
-  if (symbolInput) attachTickerAutocomplete(symbolInput, "symbolSuggestions");
+  const currencySelect = els.modalFormFields.querySelector('select[name="currency"]');
+  if (symbolInput) {
+    attachTickerAutocomplete(symbolInput, "symbolSuggestions");
+    symbolInput.addEventListener("input", () => {
+      if (currencySelect) currencySelect.value = inferCurrency(symbolInput.value);
+    });
+  }
 }
 
 function openSellHoldingModal() {
@@ -947,6 +977,7 @@ function openSellHoldingModal() {
     <input name="symbol" placeholder="Ticker — VWCE, AAPL..." autocomplete="off" required />
     <input name="quantity" type="number" inputmode="decimal" step="0.000001" placeholder="Quantity to sell" required />
     <input name="price" type="number" inputmode="decimal" step="0.01" placeholder="Sale price per unit (optional)" />
+    <select name="currency" aria-label="Currency">${currencyOptions("USD")}</select>
     <small class="muted">Proceeds go to portfolio cash.</small>
   `, async fd => {
     const payload = Object.fromEntries(fd);
@@ -957,7 +988,15 @@ function openSellHoldingModal() {
     showToast(result.message || `Sold ${payload.quantity} ${payload.symbol}`);
   }, null, { saveLabel: "Record Sale" });
   const symbolInput = els.modalFormFields.querySelector('input[name="symbol"]');
-  if (symbolInput) attachTickerAutocomplete(symbolInput, "sellSymbolSuggestions");
+  const currencySelect = els.modalFormFields.querySelector('select[name="currency"]');
+  if (symbolInput) {
+    attachTickerAutocomplete(symbolInput, "sellSymbolSuggestions");
+    symbolInput.addEventListener("input", () => {
+      const symbol = symbolInput.value.toUpperCase().trim();
+      const holding = state.holdings.find(h => h.symbol === symbol);
+      if (currencySelect) currencySelect.value = holding?.currency || inferCurrency(symbol);
+    });
+  }
 }
 
 document.querySelector("#addHoldingButton").addEventListener("click", (event) => {
