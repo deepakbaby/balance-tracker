@@ -36,7 +36,9 @@ User added, withdrew, spent, paid, deposited.
 - If account not specified, default to `"account1"`.
 
 ### 2. update_holding
-User bought an asset or updated a price.
+User bought an asset or updated a price. Triggers: "bought N X at P", "buy N X at P", "add N X at P", "got N X at P", "acquired N X at P", "X is now P", "price of X is P".
+
+**Disambiguation rule:** if the second token after the verb is a ticker-like word (1-12 chars, all-uppercase letters/digits/dots/dashes, e.g. AAPL, VWCE.DE, BTC, SPY) AND the user is NOT using a preposition like "to/from/into" before it, treat it as a holding buy, NOT a transaction. "add 200 VWCE at 115" → update_holding (qty 200, cost 115). "add 200 to account1" → create_transaction.
 ```json
 {
   "action": "update_holding",

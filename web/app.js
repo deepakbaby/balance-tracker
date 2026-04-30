@@ -660,16 +660,8 @@ document.querySelector("#refreshPricesButton").addEventListener("click", async (
 async function searchTickers(query) {
   const q = query.trim();
   if (q.length < 2) return [];
-  const res = await fetch(`https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0`);
-  const data = await res.json();
-  return (data.quotes || [])
-    .filter(r => r.symbol && (r.quoteType === "EQUITY" || r.quoteType === "ETF" || r.quoteType === "MUTUALFUND" || r.quoteType === "CRYPTOCURRENCY" || r.quoteType === "INDEX"))
-    .map(r => ({
-      symbol: r.symbol,
-      name: r.shortname || r.longname || "",
-      exchange: r.exchDisp || r.exchange || "",
-      type: r.quoteType
-    }));
+  const data = await api(`/api/ticker-search?q=${encodeURIComponent(q)}`);
+  return data.results || [];
 }
 
 function attachTickerAutocomplete(inputEl, listId) {

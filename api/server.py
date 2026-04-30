@@ -15,7 +15,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import uuid
 import datetime
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
+import urllib.parse
 import urllib.request
 import urllib.error
 import decimal
@@ -428,8 +429,31 @@ def execute_agent_action(cur, action, payload):
 
 def mock_openclaw_response(text):
     normalized = text.strip().lower()
+
+    holding_match = re.search(
+        r"\b(?:bought|buy|add|added|acquired|got)\b\s+([0-9]+(?:\.[0-9]+)?)\s+([a-z0-9.\-]{1,12})(?:\s+(?:at|@|for)\s+([0-9]+(?:\.[0-9]+)?))?",
+        normalized, re.I,
+    )
+    if holding_match:
+        raw_qty, raw_symbol, raw_price = holding_match.groups()
+        qty = float(raw_qty)
+        symbol = raw_symbol.upper()
+        if not raw_price:
+            return {"action": "query", "replyText": f"At what price did you buy {qty} {symbol}? (e.g. 'add {raw_qty} {raw_symbol} at 115')"}
+        price = float(raw_price)
+        cost_basis = qty * price
+        return {
+            "action": "update_holding",
+            "symbol": symbol,
+            "quantity": qty,
+            "cost": price,
+            "price": price,
+            "requires_confirmation": cost_basis > 5000,
+            "replyText": f"Recorded {qty} {symbol} @ {price} (cost basis {cost_basis:.2f}).",
+        }
+
     tx_match = re.search(
-        r"\b(added|add|deposit|deposited|withdraw|withdrew|spent|paid|remove|removed)\b\s+€?([0-9]+(?:\.[0-9]+)?)\s+(?:to|from|in|into)?\s*([a-z0-9 _-]+?)(?:\s+for\s+(.+))?$",
+        r"\b(added|add|deposit|deposited|withdraw|withdrew|spent|paid|remove|removed)\b\s+€?([0-9]+(?:\.[0-9]+)?)\s+(?:to|from|in|into)\s+([a-z0-9 _-]+?)(?:\s+for\s+(.+))?$",
         normalized, re.I
     )
     if tx_match:
@@ -478,6 +502,31 @@ class Handler(BaseHTTPRequestHandler):
                     "SELECT t.*, a.name account_name FROM transactions t JOIN accounts a ON a.id = t.account_id WHERE t.deleted_at IS NULL AND a.deleted_at IS NULL ORDER BY t.created_at DESC LIMIT 200"
                 )
                 return self.json(rows_to_dicts(cur.fetchall()))
+            if route == "/api/ticker-search":
+                q = (parse_qs(urlparse(self.path).query).get("q", [""])[0] or "").strip()
+                if len(q) < 2:
+                    return self.json({"results": []})
+                try:
+                    upstream = urllib.request.Request(
+                        f"https://query2.finance.yahoo.com/v1/finance/search?q={urllib.parse.quote(q)}&quotesCount=8&newsCount=0",
+                        headers={"User-Agent": "Mozilla/5.0 balance-tracker"},
+                    )
+                    with urllib.request.urlopen(upstream, timeout=4) as r:
+                        data = json.loads(r.read().decode())
+                    keep = {"EQUITY", "ETF", "MUTUALFUND", "CRYPTOCURRENCY", "INDEX"}
+                    results = [
+                        {
+                            "symbol": item.get("symbol"),
+                            "name": item.get("shortname") or item.get("longname") or "",
+                            "exchange": item.get("exchDisp") or item.get("exchange") or "",
+                            "type": item.get("quoteType"),
+                        }
+                        for item in (data.get("quotes") or [])
+                        if item.get("symbol") and item.get("quoteType") in keep
+                    ]
+                    return self.json({"results": results})
+                except Exception:
+                    return self.json({"results": []})
             if route == "/api/holdings":
                 cur.execute("SELECT * FROM holdings WHERE deleted_at IS NULL ORDER BY symbol")
                 

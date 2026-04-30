@@ -154,26 +154,6 @@ button:active {
   letter-spacing: -0.02em;
 }
 
-/* Floating settings cog (top-right of app shell) */
-.settings-fab {
-  position: absolute;
-  top: max(env(safe-area-inset-top), 8px);
-  right: 16px;
-  width: 38px;
-  height: 38px;
-  border-radius: 19px;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--muted);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 30;
-  padding: 0;
-  min-height: 0;
-}
-.settings-fab:active { transform: scale(0.92); }
-
 .nav-actions {
   display: flex;
   align-items: center;
