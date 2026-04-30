@@ -23,6 +23,7 @@ const seedState = {
 
 let state = loadState();
 let isAuthenticated = false;
+let holdingSort = "value";
 const chartRanges = { netWorth: "1W", portfolio: "1W" };
 const RANGE_DAYS = { "1W": 7, "1M": 30, "1Y": 365, "3Y": 365 * 3, "5Y": 365 * 5 };
 
@@ -430,7 +431,12 @@ function renderHoldings() {
     els.holdingList.innerHTML = `<div class="empty-state"><svg><use href="#icon-portfolio"></use></svg><h3>No Holdings</h3><p>Buy to start.</p></div>`;
     return;
   }
-  els.holdingList.innerHTML = state.holdings.map(h => {
+  const sortedHoldings = [...state.holdings].sort((a, b) => {
+    const aValue = holdingValueEur(a), bValue = holdingValueEur(b);
+    const aPnl = holdingPnlEur(a), bPnl = holdingPnlEur(b);
+    return holdingSort === "pnl" ? bPnl - aPnl : bValue - aValue;
+  });
+  els.holdingList.innerHTML = sortedHoldings.map(h => {
     const value = holdingValueEur(h), pnl = holdingPnlEur(h), cost = holdingCostEur(h);
     const pnlPercent = cost ? (pnl / cost) * 100 : 0;
     return `
@@ -1161,6 +1167,14 @@ document.querySelectorAll("[data-chart-range] button").forEach(btn => {
     chartRanges[chart] = btn.dataset.range;
     group.querySelectorAll("button").forEach(item => item.classList.toggle("active", item === btn));
     render();
+  });
+});
+
+document.querySelectorAll("[data-holding-sort] button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    holdingSort = btn.dataset.sort || "value";
+    btn.closest("[data-holding-sort]").querySelectorAll("button").forEach(item => item.classList.toggle("active", item === btn));
+    renderHoldings();
   });
 });
 
