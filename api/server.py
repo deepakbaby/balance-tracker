@@ -158,7 +158,7 @@ def find_or_create_account(cur, name):
     return dict(cur.fetchone())
 
 
-def upsert_holding(cur, symbol, quantity, cost, price):
+def upsert_holding(cur, symbol, quantity, cost, price, use_portfolio_cash=False):
     cur.execute("SELECT * FROM holdings WHERE symbol = %s", (symbol,))
     existing = cur.fetchone()
     if existing:
@@ -181,6 +181,21 @@ def upsert_holding(cur, symbol, quantity, cost, price):
             "INSERT INTO holdings (symbol, quantity, cost, price) VALUES (%s, %s, %s, %s)",
             (symbol, quantity, cost, price),
         )
+    if quantity > 0:
+        funded_amount = min(get_portfolio_cash(cur), quantity * cost)
+        cash_delta = -funded_amount if use_portfolio_cash else 0
+        record_portfolio_event(cur, "buy", cash_delta, symbol, quantity, cost, f"Bought {quantity} {symbol} @ {cost}")
+
+def record_portfolio_event(cur, event_type, cash_delta=0, symbol=None, quantity=None, price=None, note=None):
+    cur.execute(
+        "INSERT INTO portfolio_events (event_type, cash_delta, symbol, quantity, price, note) VALUES (%s, %s, %s, %s, %s, %s)",
+        (event_type, cash_delta, symbol, quantity, price, note),
+    )
+
+
+def get_portfolio_cash(cur):
+    cur.execute("SELECT COALESCE(SUM(cash_delta), 0) value FROM portfolio_events WHERE deleted_at IS NULL")
+    return float(cur.fetchone()["value"])
 
 
 def find_account(cur, name):
@@ -360,7 +375,14 @@ def execute_agent_action(cur, action, payload):
         )
         return None
     if action == "update_holding":
-        upsert_holding(cur, payload.get("symbol", "").upper(), float(payload.get("quantity", 0)), float(payload.get("cost", 0)), float(payload.get("price", 0)))
+        upsert_holding(
+            cur,
+            payload.get("symbol", "").upper(),
+            float(payload.get("quantity", 0)),
+            float(payload.get("cost", 0)),
+            float(payload.get("price", 0)),
+            bool(payload.get("use_portfolio_cash")),
+        )
         return None
     if action == "create_account":
         name = str(payload.get("name", "")).strip()
@@ -425,7 +447,36 @@ def execute_agent_action(cur, action, payload):
             cur.execute("UPDATE accounts SET balance = balance + %s WHERE id = %s", (proceeds, account["id"]))
             cur.execute("INSERT INTO transactions (account_id, amount, category, note) VALUES (%s, %s, %s, %s)",
                         (account["id"], proceeds, "investment", f"sell {qty} {symbol} @ {sale_price}"))
+            record_portfolio_event(cur, "sell_to_account", 0, symbol, qty, sale_price, f"Sold {qty} {symbol}, credited {credit_name}")
+        else:
+            record_portfolio_event(cur, "sell", proceeds, symbol, qty, sale_price, f"Sold {qty} {symbol}")
         return f"Sold {qty} {symbol} @ {money(sale_price)}. Proceeds {money(proceeds)}, realised PnL {money(realized)}."
+    if action == "move_cash_to_portfolio":
+        amount = float(payload.get("amount", 0) or 0)
+        account_name = payload.get("account") or payload.get("from_account")
+        if amount <= 0:
+            return "Portfolio cash move skipped — amount missing."
+        if account_name:
+            account = find_account(cur, account_name) or find_or_create_account(cur, account_name)
+            cur.execute("UPDATE accounts SET balance = balance - %s WHERE id = %s", (amount, account["id"]))
+            cur.execute("INSERT INTO transactions (account_id, amount, category, note) VALUES (%s, %s, %s, %s)",
+                        (account["id"], -amount, "investment", payload.get("note") or "moved cash to portfolio"))
+        record_portfolio_event(cur, "cash_in", amount, note=payload.get("note") or f"Moved {money(amount)} to portfolio")
+        return f"Moved {money(amount)} to portfolio cash."
+    if action == "move_cash_from_portfolio":
+        amount = float(payload.get("amount", 0) or 0)
+        account_name = payload.get("account") or payload.get("to_account")
+        if amount <= 0:
+            return "Portfolio cash move skipped — amount missing."
+        if amount > get_portfolio_cash(cur):
+            return "Portfolio cash move skipped — not enough available portfolio cash."
+        record_portfolio_event(cur, "cash_out", -amount, note=payload.get("note") or f"Moved {money(amount)} from portfolio")
+        if account_name:
+            account = find_account(cur, account_name) or find_or_create_account(cur, account_name)
+            cur.execute("UPDATE accounts SET balance = balance + %s WHERE id = %s", (amount, account["id"]))
+            cur.execute("INSERT INTO transactions (account_id, amount, category, note) VALUES (%s, %s, %s, %s)",
+                        (account["id"], amount, "investment", payload.get("note") or "moved cash from portfolio"))
+        return f"Moved {money(amount)} from portfolio cash."
     if action == "remove_holding":
         symbol = str(payload.get("symbol", "")).upper().strip()
         cur.execute("UPDATE holdings SET deleted_at = CURRENT_TIMESTAMP WHERE symbol = %s AND deleted_at IS NULL", (symbol,))
@@ -438,6 +489,57 @@ def execute_agent_action(cur, action, payload):
 
 def mock_openclaw_response(text):
     normalized = text.strip().lower()
+
+    cash_to_portfolio = re.search(
+        r"\b(?:move|moved|transfer|transferred|add|added)\b\s+€?([0-9]+(?:\.[0-9]+)?)\s+(?:to|into)\s+(?:my\s+)?portfolio(?:\s+from\s+([a-z0-9 _-]+))?",
+        normalized,
+        re.I,
+    )
+    if cash_to_portfolio:
+        raw_amount, account_name = cash_to_portfolio.groups()
+        amount = float(raw_amount)
+        return {
+            "action": "move_cash_to_portfolio",
+            "amount": amount,
+            "account": account_name,
+            "requires_confirmation": amount > 5000,
+            "replyText": f"Move €{amount:.2f} to portfolio cash" + (f" from {account_name}" if account_name else "") + ".",
+        }
+
+    cash_from_portfolio = re.search(
+        r"\b(?:move|moved|transfer|transferred|withdraw|withdrew)\b\s+€?([0-9]+(?:\.[0-9]+)?)\s+from\s+(?:my\s+)?portfolio(?:\s+to\s+([a-z0-9 _-]+))?",
+        normalized,
+        re.I,
+    )
+    if cash_from_portfolio:
+        raw_amount, account_name = cash_from_portfolio.groups()
+        amount = float(raw_amount)
+        return {
+            "action": "move_cash_from_portfolio",
+            "amount": amount,
+            "account": account_name,
+            "requires_confirmation": amount > 5000,
+            "replyText": f"Move €{amount:.2f} from portfolio cash" + (f" to {account_name}" if account_name else "") + ".",
+        }
+
+    sell_match = re.search(
+        r"\b(?:sold|sell)\b\s+([0-9]+(?:\.[0-9]+)?)\s+([a-z0-9.\-]{1,12})(?:\s+(?:at|@|for)\s+([0-9]+(?:\.[0-9]+)?))?(?:\s+to\s+([a-z0-9 _-]+))?",
+        normalized,
+        re.I,
+    )
+    if sell_match:
+        raw_qty, raw_symbol, raw_price, account_name = sell_match.groups()
+        qty = float(raw_qty)
+        price = float(raw_price) if raw_price else 0
+        return {
+            "action": "sell_holding",
+            "symbol": raw_symbol.upper(),
+            "quantity": qty,
+            "price": price,
+            "credit_account": account_name,
+            "requires_confirmation": True,
+            "replyText": f"Sell {qty} {raw_symbol.upper()}" + (f" @ {price}" if price else "") + ".",
+        }
 
     holding_match = re.search(
         r"\b(?:bought|buy|add|added|acquired|got)\b\s+([0-9]+(?:\.[0-9]+)?)\s+([a-z0-9.\-]{1,12})(?:\s+(?:at|@|for)\s+([0-9]+(?:\.[0-9]+)?))?",
@@ -486,7 +588,9 @@ def get_totals(cur):
     portfolio = float(cur.fetchone()["value"])
     cur.execute("SELECT COALESCE(SUM(quantity * cost), 0) value FROM holdings WHERE deleted_at IS NULL")
     cost = float(cur.fetchone()["value"])
-    return {"cash": cash, "portfolio": portfolio, "cost": cost, "pnl": portfolio - cost, "net_worth": cash + portfolio}
+    portfolio_cash = get_portfolio_cash(cur)
+    portfolio_total = portfolio + portfolio_cash
+    return {"cash": cash, "portfolio": portfolio_total, "portfolio_assets": portfolio, "portfolio_cash": portfolio_cash, "cost": cost, "pnl": portfolio - cost, "net_worth": cash + portfolio_total}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -547,6 +651,10 @@ class Handler(BaseHTTPRequestHandler):
                     if d.get("last_price_at"): d["last_price_at"] = str(d["last_price_at"])
                     return d
                 return self.json([stringify_h(r) for r in cur.fetchall()])
+            if route == "/api/portfolio":
+                cur.execute("SELECT * FROM portfolio_events WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 200")
+                events = rows_to_dicts(cur.fetchall())
+                return self.json({"cash": get_portfolio_cash(cur), "events": events})
             if route == "/api/analysis":
                 cur.execute("""
                     SELECT COALESCE(SUM(amount), 0) as total, category
@@ -638,7 +746,14 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 return self.json({"ok": True}, 201)
             if route == "/api/holdings":
-                upsert_holding(cur, body["symbol"].upper(), float(body["quantity"]), float(body["cost"]), float(body["price"]))
+                upsert_holding(
+                    cur,
+                    body["symbol"].upper(),
+                    float(body["quantity"]),
+                    float(body["cost"]),
+                    float(body["price"]),
+                    bool(body.get("use_portfolio_cash")),
+                )
                 return self.json({"ok": True}, 201)
             if route == "/api/prices":
                 for item in body.get("prices", []):
@@ -647,6 +762,17 @@ class Handler(BaseHTTPRequestHandler):
                         (float(item["price"]), item["symbol"].upper()),
                     )
                 return self.json({"ok": True})
+            if route == "/api/portfolio/cash-transfer":
+                action = "move_cash_from_portfolio" if float(body.get("amount", 0)) < 0 else "move_cash_to_portfolio"
+                result = execute_agent_action(cur, action, {
+                    "amount": abs(float(body.get("amount", 0))),
+                    "account": body.get("account"),
+                    "note": body.get("note") or "manual portfolio cash transfer",
+                })
+                return self.json({"ok": True, "message": result})
+            if route == "/api/portfolio/sell":
+                result = execute_agent_action(cur, "sell_holding", body)
+                return self.json({"ok": True, "message": result})
             if route == "/api/chat":
                 result = handle_chat_command(body.get("message", ""))
                 return self.json(result)

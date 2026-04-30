@@ -335,6 +335,35 @@ button:active {
 
 .button-row { display: flex; align-items: center; gap: 8px; }
 
+.range-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--soft-panel);
+}
+
+.range-tabs button {
+  min-height: 28px;
+  min-width: 34px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.range-tabs button.active {
+  background: var(--panel);
+  color: var(--accent-strong);
+  box-shadow: var(--shadow-sm);
+}
+
 .chart-wrap, .mini-chart-wrap {
   position: relative;
 }
@@ -652,7 +681,205 @@ input:focus, select:focus, textarea:focus {
   overflow-wrap: anywhere;
 }
 
-.portfolio-xray { margin-bottom: 16px; }
+.portfolio-xray {
+  margin-bottom: 16px;
+  padding: 18px;
+  background: linear-gradient(145deg, #ffffff, #ecfdf5);
+  border-color: rgba(16, 185, 129, 0.16);
+}
+
+.portfolio-carousel {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 100%;
+  gap: 16px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.portfolio-carousel::-webkit-scrollbar {
+  display: none;
+}
+
+.portfolio-slide {
+  scroll-snap-align: start;
+  min-width: 0;
+}
+
+.growth-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.growth-summary article {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--border-radius-md);
+  background: var(--soft-panel);
+}
+
+.growth-summary span {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.growth-summary strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.growth-chart {
+  margin-top: 14px;
+}
+
+.growth-chart svg {
+  display: block;
+  width: 100%;
+  height: 112px;
+  overflow: visible;
+  border-radius: var(--border-radius-md);
+  background:
+    linear-gradient(to bottom, rgba(226, 232, 240, 0.7) 1px, transparent 1px) 0 0 / 100% 33.33%,
+    linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(14, 165, 233, 0.06));
+}
+
+.growth-chart polyline {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.growth-value-line {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.growth-cost-line {
+  stroke: var(--gold);
+  stroke-width: 2;
+  stroke-dasharray: 5 5;
+}
+
+.growth-axis, .growth-legend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.growth-legend {
+  justify-content: flex-start;
+}
+
+.growth-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.growth-legend i {
+  width: 18px;
+  height: 3px;
+  border-radius: 999px;
+}
+
+.legend-value { background: var(--accent); }
+.legend-cost { background: var(--gold); }
+.legend-cash { background: #0ea5e9; }
+
+.allocation-hero {
+  min-height: 188px;
+  display: grid;
+  grid-template-columns: 138px 1fr;
+  align-items: center;
+  gap: 18px;
+}
+
+.allocation-pie {
+  width: 138px;
+  height: 138px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at center, var(--panel) 0 48%, transparent 49%),
+    conic-gradient(var(--accent) 0 var(--asset-pct), #0ea5e9 0 100%);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08), var(--shadow-sm);
+}
+
+.allocation-copy span, .allocation-breakdown span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.allocation-copy strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 30px;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.allocation-copy .growth-legend {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.allocation-breakdown {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.allocation-breakdown article {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--border-radius-md);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.allocation-breakdown strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 420px) {
+  .allocation-hero {
+    grid-template-columns: 116px 1fr;
+    gap: 14px;
+  }
+
+  .allocation-pie {
+    width: 116px;
+    height: 116px;
+  }
+
+  .allocation-copy strong {
+    font-size: 24px;
+  }
+}
 
 .bar-track {
   height: 12px;
@@ -957,6 +1184,72 @@ input:focus, select:focus, textarea:focus {
 .modal-body form { display: grid; gap: 14px; }
 .modal-actions {
   display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;
+}
+
+.cash-toggle {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--border-radius-md);
+  background: var(--soft-panel);
+}
+
+.cash-toggle input {
+  width: 20px;
+  min-height: 20px;
+  accent-color: var(--accent);
+}
+
+.cash-toggle strong,
+.cash-toggle small {
+  display: block;
+}
+
+.cash-toggle strong {
+  font-size: 14px;
+}
+
+.cash-toggle small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.portfolio-action-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.portfolio-action-card {
+  min-height: 92px;
+  padding: 16px;
+  border: 1px solid rgba(16, 185, 129, 0.22);
+  border-radius: var(--border-radius-lg);
+  background: linear-gradient(135deg, #ffffff, #ecfdf5);
+  color: var(--ink);
+  text-align: left;
+  display: grid;
+  gap: 6px;
+}
+
+.portfolio-action-card.sell {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: linear-gradient(135deg, #ffffff, #fffbeb);
+}
+
+.portfolio-action-card strong {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.portfolio-action-card span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .close-btn {

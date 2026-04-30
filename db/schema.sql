@@ -46,3 +46,15 @@ CREATE TABLE agent_actions (
   status TEXT NOT NULL DEFAULT 'pending',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE portfolio_events (
+  id INTEGER PRIMARY KEY,
+  event_type TEXT NOT NULL,
+  symbol TEXT,
+  quantity REAL,
+  price REAL,
+  cash_delta REAL NOT NULL DEFAULT 0,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TEXT
+);

@@ -68,7 +68,13 @@
           <section class="panel">
             <div class="section-head">
               <h2>Net Worth Trend</h2>
-              <span id="trendLabel">Today</span>
+              <div class="range-tabs" data-chart-range="netWorth" aria-label="Net worth chart range">
+                <button class="active" data-range="1W" type="button">1W</button>
+                <button data-range="1M" type="button">1M</button>
+                <button data-range="1Y" type="button">1Y</button>
+                <button data-range="3Y" type="button">3Y</button>
+                <button data-range="5Y" type="button">5Y</button>
+              </div>
             </div>
             <div class="chart-wrap">
               <svg id="netWorthChart" role="img" aria-label="Net worth chart"></svg>
@@ -124,8 +130,14 @@
           </form>
           <section class="panel portfolio-xray">
             <div class="section-head">
-              <h2>X-Ray</h2>
-              <span id="portfolioXrayLabel">Asset mix</span>
+              <h2>Growth</h2>
+              <div class="range-tabs" data-chart-range="portfolio" aria-label="Portfolio growth range">
+                <button class="active" data-range="1W" type="button">1W</button>
+                <button data-range="1M" type="button">1M</button>
+                <button data-range="1Y" type="button">1Y</button>
+                <button data-range="3Y" type="button">3Y</button>
+                <button data-range="5Y" type="button">5Y</button>
+              </div>
             </div>
             <div class="bar-list" id="portfolioXray"></div>
           </section>
@@ -152,6 +164,10 @@
             <article class="insight-card">
               <span>Runway</span>
               <strong id="runwayMonths">--</strong>
+            </article>
+            <article class="insight-card">
+              <span>Portfolio profit</span>
+              <strong id="portfolioProfit">EUR 0</strong>
             </article>
           </div>
           <section class="panel">

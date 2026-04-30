@@ -16,13 +16,15 @@ const ACCOUNT_COLORS = [
 ];
 
 const seedState = {
-  accounts: [], transactions: [], holdings: [],
+  accounts: [], transactions: [], holdings: [], portfolioCash: 0, portfolioEvents: [],
   chats: [{ id: crypto.randomUUID(), role: "agent", text: "Ready. Try: added 1500 to account1, withdraw 200 from account2 for renovation, or bought 2 AAPL at 170 now 190.", createdAt: new Date().toISOString() }],
   snapshots: []
 };
 
 let state = loadState();
 let isAuthenticated = false;
+const chartRanges = { netWorth: "1W", portfolio: "1W" };
+const RANGE_DAYS = { "1W": 7, "1M": 30, "1Y": 365, "3Y": 365 * 3, "5Y": 365 * 5 };
 
 const els = {
   globalLoader: document.querySelector("#globalLoader"),
@@ -35,7 +37,6 @@ const els = {
   portfolioLivePnl: document.querySelector("#portfolioLivePnl"),
   portfolioKpis: document.querySelector("#portfolioKpis"),
   portfolioXray: document.querySelector("#portfolioXray"),
-  portfolioXrayLabel: document.querySelector("#portfolioXrayLabel"),
   priceStatus: document.querySelector("#priceStatus"),
   activityList: document.querySelector("#activityList"),
   accountList: document.querySelector("#accountList"),
@@ -43,7 +44,6 @@ const els = {
   accountBars: document.querySelector("#accountBars"),
   categoryBars: document.querySelector("#categoryBars"),
   accountSplitLabel: document.querySelector("#accountSplitLabel"),
-  trendLabel: document.querySelector("#trendLabel"),
   evolutionLabel: document.querySelector("#evolutionLabel"),
   chart: document.querySelector("#netWorthChart"),
   analysisChart: document.querySelector("#analysisChart"),
@@ -51,6 +51,7 @@ const els = {
   monthlyOutflow: document.querySelector("#monthlyOutflow"),
   savingsRate: document.querySelector("#savingsRate"),
   runwayMonths: document.querySelector("#runwayMonths"),
+  portfolioProfit: document.querySelector("#portfolioProfit"),
   signalList: document.querySelector("#signalList"),
   signalCount: document.querySelector("#signalCount"),
   chatLog: document.querySelector("#chatLog"),
@@ -66,7 +67,8 @@ const els = {
   modalTitle: document.querySelector("#modalTitle"),
   modalFormFields: document.querySelector("#modalFormFields"),
   genericForm: document.querySelector("#genericForm"),
-  modalDeleteBtn: document.querySelector("#modalDeleteBtn")
+  modalDeleteBtn: document.querySelector("#modalDeleteBtn"),
+  modalSaveBtn: document.querySelector('#genericForm button[type="submit"]')
 };
 
 function loadState() {
@@ -123,8 +125,8 @@ async function api(path, options = {}) {
 }
 
 async function loadServerState() {
-  const [accounts, transactions, holdings, chats, analysis] = await Promise.all([
-    api("/api/accounts"), api("/api/transactions"), api("/api/holdings"), api("/api/chat"), api("/api/analysis")
+  const [accounts, transactions, holdings, chats, analysis, portfolio] = await Promise.all([
+    api("/api/accounts"), api("/api/transactions"), api("/api/holdings"), api("/api/chat"), api("/api/analysis"), api("/api/portfolio")
   ]);
   state.accounts = accounts.map(a => ({ id: a.id, name: a.name, balance: Number(a.balance || 0), createdAt: a.created_at }));
   state.transactions = transactions.map(tx => ({
@@ -140,6 +142,8 @@ async function loadServerState() {
     action_id: c.action_id, action_status: c.action_status 
   })) : seedState.chats;
   state.analysis = analysis;
+  state.portfolioCash = Number(portfolio.cash || 0);
+  state.portfolioEvents = portfolio.events || [];
   render();
 }
 
@@ -151,9 +155,10 @@ function money(value) {
 }
 
 function totalCash() { return state.accounts.reduce((sum, acc) => sum + acc.balance, 0); }
-function portfolioValue() { return state.holdings.reduce((sum, h) => sum + h.quantity * h.price, 0); }
+function portfolioAssetValue() { return state.holdings.reduce((sum, h) => sum + h.quantity * h.price, 0); }
+function portfolioValue() { return portfolioAssetValue() + Math.max(state.portfolioCash || 0, 0); }
 function portfolioCost() { return state.holdings.reduce((sum, h) => sum + h.quantity * h.cost, 0); }
-function portfolioPnl() { return portfolioValue() - portfolioCost(); }
+function portfolioPnl() { return portfolioAssetValue() - portfolioCost(); }
 function portfolioPnlPercent() { const cost = portfolioCost(); return cost ? (portfolioPnl() / cost) * 100 : 0; }
 function netWorth() { return totalCash() + portfolioValue(); }
 
@@ -186,9 +191,8 @@ function render() {
   renderBars();
   renderInsights();
   renderChat();
-  const trendPoints = buildNetWorthTrend();
-  const trendText = trendPoints.length > 1 ? `${trendPoints.length} data points` : "Today";
-  els.trendLabel.textContent = trendText;
+  const trendPoints = filterPointsForRange(buildNetWorthTrend(), chartRanges.netWorth);
+  const trendText = `${chartRanges.netWorth} · ${trendPoints.length} data point${trendPoints.length === 1 ? "" : "s"}`;
   els.evolutionLabel.textContent = trendText;
   renderLineChart(els.chart, 200, trendPoints);
   renderLineChart(els.analysisChart, 160, trendPoints);
@@ -209,22 +213,116 @@ function renderPortfolioSummary() {
     <article class="kpi-pill"><span>Best</span><strong class="${best?.pnl >= 0 ? 'positive' : 'negative'}">${best ? best.symbol : "--"}</strong></article>
   `;
 
-  if (!state.holdings.length) {
-    els.portfolioXrayLabel.textContent = "Asset mix";
-    els.portfolioXray.innerHTML = `<p class="muted" style="margin-top: 10px;">Add holdings to see exposure.</p>`;
+  if (!state.holdings.length && !(state.portfolioCash > 0)) {
+    els.portfolioXray.innerHTML = `<p class="muted" style="margin-top: 10px;">Add holdings or move cash to see portfolio charts.</p>`;
     return;
   }
-  const mix = state.holdings.reduce((map, h) => {
-    const bucket = CRYPTO_IDS[h.symbol] ? "Crypto" : "Stocks / ETFs";
-    map[bucket] = (map[bucket] || 0) + h.quantity * h.price;
+  renderPortfolioGrowth();
+}
+
+function renderPortfolioGrowth() {
+  const value = portfolioAssetValue();
+  const cost = portfolioCost();
+  const pnl = value - cost;
+  const pnlPercent = cost ? (pnl / cost) * 100 : 0;
+  const points = filterPointsForRange(buildPortfolioGrowthPoints(), chartRanges.portfolio);
+  const max = Math.max(...points.flatMap((point) => [point.value, point.cost]), 1);
+  const valueBars = points.map((point, i) => {
+    const x = points.length === 1 ? 100 : (i / (points.length - 1)) * 100;
+    const y = 100 - (point.value / max) * 88;
+    return `${x},${Math.max(y, 6)}`;
+  });
+  const costBars = points.map((point, i) => {
+    const x = points.length === 1 ? 100 : (i / (points.length - 1)) * 100;
+    const y = 100 - (point.cost / max) * 88;
+    return `${x},${Math.max(y, 6)}`;
+  });
+
+  els.portfolioXray.innerHTML = `
+    <div class="portfolio-carousel" aria-label="Portfolio charts">
+      <section class="portfolio-slide">
+        <div class="growth-summary">
+          <article><span>Invested cash</span><strong>${money(cost)}</strong></article>
+          <article><span>Assets value</span><strong>${money(value)}</strong></article>
+          <article><span>Profit</span><strong class="${pnl >= 0 ? "positive" : "negative"}">${pnl >= 0 ? "+" : ""}${money(pnl)} · ${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(2)}%</strong></article>
+        </div>
+        <div class="growth-chart" aria-label="Invested cash and current portfolio value over time">
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none">
+            <polyline class="growth-cost-line" points="${costBars.join(" ")}"></polyline>
+            <polyline class="growth-value-line" points="${valueBars.join(" ")}"></polyline>
+          </svg>
+          <div class="growth-axis">
+            <span>${formatChartDate(points[0].date)}</span>
+            <span>${formatChartDate(points.at(-1).date)}</span>
+          </div>
+        </div>
+        <div class="growth-legend">
+          <span><i class="legend-value"></i>Current assets</span>
+          <span><i class="legend-cost"></i>Invested cash</span>
+        </div>
+      </section>
+      <section class="portfolio-slide">
+        ${renderPortfolioAllocationPie()}
+      </section>
+    </div>
+  `;
+}
+
+function renderPortfolioAllocationPie() {
+  const assets = portfolioAssetValue();
+  const availableCash = Math.max(state.portfolioCash || 0, 0);
+  const total = Math.max(assets + availableCash, 1);
+  const assetPct = (assets / total) * 100;
+  const cashPct = 100 - assetPct;
+  return `
+    <div class="allocation-hero">
+      <div class="allocation-pie" style="--asset-pct:${assetPct}%;"></div>
+      <div class="allocation-copy">
+        <span>Portfolio allocation</span>
+        <strong>${money(total)}</strong>
+        <div class="growth-legend">
+          <span><i class="legend-value"></i>Stocks / ETFs ${assetPct.toFixed(0)}%</span>
+          <span><i class="legend-cash"></i>Cash ${cashPct.toFixed(0)}%</span>
+        </div>
+      </div>
+    </div>
+    <div class="allocation-breakdown">
+      <article><span>Invested assets</span><strong>${money(assets)}</strong></article>
+      <article><span>Available cash</span><strong>${money(availableCash)}</strong></article>
+    </div>
+  `;
+}
+
+function buildPortfolioGrowthPoints() {
+  const today = new Date().toISOString().slice(0, 10);
+  const buckets = state.holdings.reduce((map, holding) => {
+    const date = dateKey(holding.createdAt) || today;
+    const current = Number(holding.quantity || 0) * Number(holding.price || 0);
+    const invested = Number(holding.quantity || 0) * Number(holding.cost || 0);
+    const bucket = map.get(date) || { value: 0, cost: 0 };
+    bucket.value += current;
+    bucket.cost += invested;
+    map.set(date, bucket);
     return map;
-  }, {});
-  const total = Math.max(Object.values(mix).reduce((sum, v) => sum + v, 0), 1);
-  els.portfolioXrayLabel.textContent = `${Object.keys(mix).length} class${Object.keys(mix).length === 1 ? "" : "es"}`;
-  els.portfolioXray.innerHTML = Object.entries(mix)
-    .sort((a, b) => b[1] - a[1])
-    .map(([name, val]) => barRow(name, `${money(val)} · ${Math.round((val / total) * 100)}%`, val / total))
-    .join("");
+  }, new Map());
+
+  const dates = [...buckets.keys()].sort();
+  let runningValue = 0;
+  let runningCost = 0;
+  const points = [];
+  if (dates[0]) points.push({ date: addDays(dates[0], -1), value: 0, cost: 0 });
+  dates.forEach((date) => {
+    const bucket = buckets.get(date);
+    runningValue += bucket.value;
+    runningCost += bucket.cost;
+    points.push({ date, value: runningValue, cost: runningCost });
+  });
+
+  if (!points.length || points.at(-1).date !== today) {
+    points.push({ date: today, value: runningValue, cost: runningCost });
+  }
+
+  return points;
 }
 
 function renderAccounts() {
@@ -329,6 +427,10 @@ function renderInsights() {
   els.savingsRate.textContent = `${savingsRate}%`;
   els.savingsRate.className = savingsRate >= 0 ? "positive" : "negative";
   els.runwayMonths.textContent = runway === null ? "--" : `${Math.max(runway, 0).toFixed(1)} mo`;
+  const profit = portfolioPnl();
+  const profitPercent = portfolioCost() ? (profit / portfolioCost()) * 100 : 0;
+  els.portfolioProfit.textContent = `${profit >= 0 ? "+" : ""}${money(profit)} · ${profitPercent >= 0 ? "+" : ""}${profitPercent.toFixed(2)}%`;
+  els.portfolioProfit.className = profit >= 0 ? "positive" : "negative";
 
   const signals = [];
   if (inflow || outflow) signals.push({ type: "Cash flow", title: savingsRate >= 0 ? `Kept ${savingsRate}% of inflow` : `Outflows exceed inflow`, detail: `${money(inflow)} in, ${money(outflow)} out.` });
@@ -432,6 +534,15 @@ function addDays(dateKeyValue, days) {
   const date = new Date(`${dateKeyValue}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+function filterPointsForRange(points, range) {
+  if (!points.length) return points;
+  const cutoff = addDays(new Date().toISOString().slice(0, 10), -(RANGE_DAYS[range] || RANGE_DAYS["1M"]));
+  const inRange = points.filter((point) => point.date >= cutoff);
+  const previous = [...points].reverse().find((point) => point.date < cutoff);
+  const filtered = previous ? [previous, ...inRange] : inRange;
+  return filtered.length ? filtered : points.slice(-2);
 }
 
 function renderLineChart(target, height, points = buildNetWorthTrend()) {
@@ -551,10 +662,12 @@ document.querySelector("#chatForm").addEventListener("submit", async (e) => {
 // ----------------------------------------
 let currentModalAction = null;
 
-function openModal(title, fieldsHtml, onSave, onDelete) {
+function openModal(title, fieldsHtml, onSave, onDelete, options = {}) {
   els.modalTitle.textContent = title;
   els.modalFormFields.innerHTML = fieldsHtml;
   els.modalDeleteBtn.style.display = onDelete ? "block" : "none";
+  els.modalSaveBtn.style.display = options.hideSave ? "none" : "inline-flex";
+  els.modalSaveBtn.textContent = options.saveLabel || "Save Changes";
   currentModalAction = { onSave, onDelete };
   els.modalBackdrop.classList.add("active");
 }
@@ -562,6 +675,8 @@ function openModal(title, fieldsHtml, onSave, onDelete) {
 function closeModal() {
   els.modalBackdrop.classList.remove("active");
   currentModalAction = null;
+  els.modalSaveBtn.style.display = "inline-flex";
+  els.modalSaveBtn.textContent = "Save Changes";
   els.genericForm.reset();
 }
 
@@ -747,15 +862,38 @@ document.querySelector("#addAccountButton").addEventListener("click", () => {
   });
 });
 
-document.querySelector("#addHoldingButton").addEventListener("click", () => {
-  openModal("New Holding", `
+function openPortfolioActionPicker() {
+  openModal("Portfolio Action", `
+    <div class="portfolio-action-grid">
+      <button type="button" class="portfolio-action-card" data-portfolio-action="buy">
+        <strong>Buy</strong>
+        <span>Add shares or ETFs to your portfolio</span>
+      </button>
+      <button type="button" class="portfolio-action-card sell" data-portfolio-action="sell">
+        <strong>Sell</strong>
+        <span>Record a sale and update cash</span>
+      </button>
+    </div>
+  `, null, null, { hideSave: true });
+}
+
+function openBuyHoldingModal() {
+  openModal("Buy Holding", `
     <input name="symbol" placeholder="Start typing — VWCE, AAPL, BTC..." autocomplete="off" required />
     <input name="quantity" type="number" inputmode="decimal" step="0.000001" placeholder="Quantity" required />
     <input name="cost" type="number" inputmode="decimal" step="0.01" placeholder="Purchase price per unit" required />
+    <label class="cash-toggle">
+      <input name="use_portfolio_cash" type="checkbox" />
+      <span>
+        <strong>Use portfolio cash</strong>
+        <small>Subtract this buy from available portfolio cash (${money(state.portfolioCash || 0)} available)</small>
+      </span>
+    </label>
     <small class="muted">Pick from the dropdown to ensure the right exchange (e.g. VWCE.DE for Xetra).</small>
   `, async fd => {
     const symbol = String(fd.get("symbol")).toUpperCase().trim();
     const cost = Number(fd.get("cost"));
+    const usePortfolioCash = fd.get("use_portfolio_cash") === "on";
     let price;
     try {
       price = await fetchLivePrice(symbol);
@@ -767,13 +905,39 @@ document.querySelector("#addHoldingButton").addEventListener("click", () => {
     }
     await api("/api/holdings", {
       method: "POST",
-      body: JSON.stringify({ symbol, quantity: fd.get("quantity"), cost, price })
+      body: JSON.stringify({ symbol, quantity: fd.get("quantity"), cost, price, use_portfolio_cash: usePortfolioCash })
     });
     await loadServerState();
     showToast(`Holding ${symbol} added at live ${money(price)}`);
   });
   const symbolInput = els.modalFormFields.querySelector('input[name="symbol"]');
   if (symbolInput) attachTickerAutocomplete(symbolInput, "symbolSuggestions");
+}
+
+function openSellHoldingModal() {
+  openModal("Sell Holding", `
+    <input name="symbol" placeholder="Ticker — VWCE, AAPL..." autocomplete="off" required />
+    <input name="quantity" type="number" inputmode="decimal" step="0.000001" placeholder="Quantity to sell" required />
+    <input name="price" type="number" inputmode="decimal" step="0.01" placeholder="Sale price per unit (optional)" />
+    <small class="muted">Sale proceeds are added automatically to available portfolio cash.</small>
+  `, async fd => {
+    const payload = Object.fromEntries(fd);
+    payload.symbol = String(payload.symbol).toUpperCase().trim();
+    delete payload.credit_account;
+    const result = await api("/api/portfolio/sell", { method: "POST", body: JSON.stringify(payload) });
+    await loadServerState();
+    showToast(result.message || `Sold ${payload.quantity} ${payload.symbol}`);
+  }, null, { saveLabel: "Record Sale" });
+  const symbolInput = els.modalFormFields.querySelector('input[name="symbol"]');
+  if (symbolInput) attachTickerAutocomplete(symbolInput, "sellSymbolSuggestions");
+}
+
+document.querySelector("#addHoldingButton").addEventListener("click", openPortfolioActionPicker);
+
+els.modalFormFields.addEventListener("click", (event) => {
+  const action = event.target.closest("[data-portfolio-action]")?.dataset.portfolioAction;
+  if (action === "buy") openBuyHoldingModal();
+  if (action === "sell") openSellHoldingModal();
 });
 
 document.querySelector("#addTxBtn").addEventListener("click", () => {
@@ -855,6 +1019,16 @@ document.querySelectorAll("[data-tab]").forEach(btn => {
     document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === t));
     document.querySelectorAll(".tab").forEach(i => i.classList.toggle("active", i.dataset.tab === t));
     window.dispatchEvent(new Event('resize')); 
+  });
+});
+
+document.querySelectorAll("[data-chart-range] button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const group = btn.closest("[data-chart-range]");
+    const chart = group.dataset.chartRange;
+    chartRanges[chart] = btn.dataset.range;
+    group.querySelectorAll("button").forEach(item => item.classList.toggle("active", item === btn));
+    render();
   });
 });
 
