@@ -613,6 +613,39 @@ input:focus, select:focus, textarea:focus {
   gap: 4px;
 }
 
+.message.action-prompt {
+  justify-self: stretch;
+  max-width: none;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 8px 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.action-prompt .action-btn {
+  width: auto;
+  min-width: 116px;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.action-prompt .confirm-btn {
+  border-color: var(--good);
+  color: var(--good);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.action-prompt .cancel-btn {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.08);
+}
+
 .dot-flashing {
   position: relative;
   width: 6px; height: 6px;

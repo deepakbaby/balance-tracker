@@ -358,8 +358,8 @@ function renderChat() {
     if (msg.action_id && msg.action_status === "pending") {
       html += `
         <div class="message action-prompt" data-action="${msg.action_id}">
-          <button class="action-btn confirm-btn" style="border:1px solid var(--success); color:var(--success);">Confirm</button>
-          <button class="action-btn cancel-btn" style="border:1px solid var(--error); color:var(--error);">Cancel</button>
+          <button class="action-btn cancel-btn">Cancel</button>
+          <button class="action-btn confirm-btn">Confirm</button>
         </div>`;
     }
     return html;

@@ -338,6 +338,15 @@ def handle_chat_command(text):
         cur.execute("INSERT INTO chat_messages (role, text, action_id) VALUES (%s, %s, %s)", ("agent", reply_text, action_id))
         return {"reply": reply_text, "requires_confirmation": requires_confirmation, "action_id": action_id}
 
+def decode_action_payload(value):
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if isinstance(value, str):
+        return json.loads(value)
+    return {}
+
 def execute_agent_action(cur, action, payload):
     if action == "create_transaction":
         account = find_or_create_account(cur, payload.get("account", "account1"))
@@ -650,10 +659,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not action or action["status"] != "pending":
                     return self.json({"error": "Action invalid or already processed"}, 400)
                 
+                executed_reply = execute_agent_action(cur, action["action_type"], decode_action_payload(action["payload_json"]))
                 cur.execute("UPDATE agent_actions SET status = 'executed' WHERE id = %s", (item_id,))
-                execute_agent_action(cur, action["action_type"], json.loads(action["payload_json"]))
                 cur.execute("UPDATE chat_messages SET action_id = NULL WHERE action_id = %s", (item_id,))
-                cur.execute("INSERT INTO chat_messages (role, text) VALUES (%s, %s)", ("agent", "Action confirmed and executed."))
+                cur.execute("INSERT INTO chat_messages (role, text) VALUES (%s, %s)", ("agent", executed_reply or "Action confirmed and executed."))
                 return self.json({"ok": True})
             if route.startswith("/api/agent/cancel/"):
                 parts = route.rstrip('/').split('/')
