@@ -37,6 +37,7 @@ const els = {
   portfolioLivePnl: document.querySelector("#portfolioLivePnl"),
   portfolioKpis: document.querySelector("#portfolioKpis"),
   portfolioXray: document.querySelector("#portfolioXray"),
+  portfolioActionMenu: document.querySelector("#portfolioActionMenu"),
   priceStatus: document.querySelector("#priceStatus"),
   activityList: document.querySelector("#activityList"),
   accountList: document.querySelector("#accountList"),
@@ -877,43 +878,37 @@ document.querySelector("#addAccountButton").addEventListener("click", () => {
   });
 });
 
-function openPortfolioActionPicker() {
-  openModal("Portfolio Action", `
-    <div class="portfolio-action-grid">
-      <button type="button" class="portfolio-action-card" data-portfolio-action="buy">
-        <strong>Buy</strong>
-        <span>Add shares or ETFs to your portfolio</span>
-      </button>
-      <button type="button" class="portfolio-action-card sell" data-portfolio-action="sell">
-        <strong>Sell</strong>
-        <span>Record a sale and update cash</span>
-      </button>
-    </div>
-  `, null, null, { hideSave: true });
+function togglePortfolioActionMenu() {
+  els.portfolioActionMenu.classList.toggle("active");
+}
+
+function closePortfolioActionMenu() {
+  els.portfolioActionMenu.classList.remove("active");
 }
 
 function openBuyHoldingModal() {
   openModal("Buy Holding", `
-    <input name="symbol" placeholder="Start typing — VWCE, AAPL, BTC..." autocomplete="off" required />
+    <input name="symbol" placeholder="Symbol" autocomplete="off" required />
     <input name="quantity" type="number" inputmode="decimal" step="0.000001" placeholder="Quantity" required />
     <input name="cost" type="number" inputmode="decimal" step="0.01" placeholder="Purchase price per unit" required />
+    <input name="price" type="number" inputmode="decimal" step="0.01" placeholder="Current price (optional)" />
     <label class="cash-toggle">
       <input name="use_portfolio_cash" type="checkbox" />
       <span>
         <strong>Use portfolio cash</strong>
-        <small>Subtract this buy from available portfolio cash (${money(state.portfolioCash || 0)} available)</small>
+        <small>${money(state.portfolioCash || 0)} available</small>
       </span>
     </label>
-    <small class="muted">Pick from the dropdown to ensure the right exchange (e.g. VWCE.DE for Xetra).</small>
   `, async fd => {
     const symbol = String(fd.get("symbol")).toUpperCase().trim();
     const cost = Number(fd.get("cost"));
+    const manualPrice = Number(fd.get("price"));
     const usePortfolioCash = fd.get("use_portfolio_cash") === "on";
     let price;
     try {
       price = await fetchLivePrice(symbol);
     } catch {
-      throw new Error(`Ticker "${symbol}" not found. For non-US ETFs add the exchange suffix (e.g. VWCE.DE).`);
+      price = Number.isFinite(manualPrice) && manualPrice > 0 ? manualPrice : cost;
     }
     if (!Number.isFinite(price) || price <= 0) {
       throw new Error(`Ticker "${symbol}" returned no price. Double-check the symbol.`);
@@ -934,7 +929,7 @@ function openSellHoldingModal() {
     <input name="symbol" placeholder="Ticker — VWCE, AAPL..." autocomplete="off" required />
     <input name="quantity" type="number" inputmode="decimal" step="0.000001" placeholder="Quantity to sell" required />
     <input name="price" type="number" inputmode="decimal" step="0.01" placeholder="Sale price per unit (optional)" />
-    <small class="muted">Sale proceeds are added automatically to available portfolio cash.</small>
+    <small class="muted">Proceeds go to portfolio cash.</small>
   `, async fd => {
     const payload = Object.fromEntries(fd);
     payload.symbol = String(payload.symbol).toUpperCase().trim();
@@ -947,12 +942,23 @@ function openSellHoldingModal() {
   if (symbolInput) attachTickerAutocomplete(symbolInput, "sellSymbolSuggestions");
 }
 
-document.querySelector("#addHoldingButton").addEventListener("click", openPortfolioActionPicker);
+document.querySelector("#addHoldingButton").addEventListener("click", (event) => {
+  event.stopPropagation();
+  togglePortfolioActionMenu();
+});
 
-els.modalFormFields.addEventListener("click", (event) => {
+els.portfolioActionMenu.addEventListener("click", (event) => {
   const action = event.target.closest("[data-portfolio-action]")?.dataset.portfolioAction;
+  if (!action) return;
+  closePortfolioActionMenu();
   if (action === "buy") openBuyHoldingModal();
   if (action === "sell") openSellHoldingModal();
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest("#portfolioActionMenu") && !event.target.closest("#addHoldingButton")) {
+    closePortfolioActionMenu();
+  }
 });
 
 document.querySelector("#addTxBtn").addEventListener("click", () => {
@@ -1012,9 +1018,8 @@ async function fetchLivePrice(symbol) {
     const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=${CURRENCY.toLowerCase()}`);
     return (await res.json())[id]?.[CURRENCY.toLowerCase()];
   }
-  const res = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(clean)}?range=1d&interval=1m`);
-  const data = await res.json();
-  const price = data.chart?.result?.[0]?.meta?.regularMarketPrice;
+  const data = await api(`/api/price?symbol=${encodeURIComponent(clean)}`);
+  const price = data.price;
   if (!Number.isFinite(price)) throw new Error("Price missing");
   return price;
 }

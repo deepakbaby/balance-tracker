@@ -158,6 +158,7 @@ button:active {
   display: flex;
   align-items: center;
   gap: 8px;
+  position: relative;
 }
 
 .nav-action {
@@ -181,6 +182,40 @@ button:active {
   color: var(--ink);
   border: 1px solid var(--line);
   font-size: 18px;
+}
+
+.portfolio-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  min-width: 132px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(18px);
+  display: none;
+}
+
+.portfolio-menu.active {
+  display: grid;
+}
+
+.portfolio-menu button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  padding: 0 12px;
+  font-weight: 700;
+}
+
+.portfolio-menu button:hover {
+  background: var(--soft-panel);
 }
 
 .eyebrow {
@@ -1216,39 +1251,6 @@ input:focus, select:focus, textarea:focus {
   margin-top: 2px;
   color: var(--muted);
   font-size: 12px;
-  line-height: 1.35;
-}
-
-.portfolio-action-grid {
-  display: grid;
-  gap: 12px;
-}
-
-.portfolio-action-card {
-  min-height: 92px;
-  padding: 16px;
-  border: 1px solid rgba(16, 185, 129, 0.22);
-  border-radius: var(--border-radius-lg);
-  background: linear-gradient(135deg, #ffffff, #ecfdf5);
-  color: var(--ink);
-  text-align: left;
-  display: grid;
-  gap: 6px;
-}
-
-.portfolio-action-card.sell {
-  border-color: rgba(245, 158, 11, 0.28);
-  background: linear-gradient(135deg, #ffffff, #fffbeb);
-}
-
-.portfolio-action-card strong {
-  font-size: 18px;
-  font-weight: 800;
-}
-
-.portfolio-action-card span {
-  color: var(--muted);
-  font-size: 13px;
   line-height: 1.35;
 }
 

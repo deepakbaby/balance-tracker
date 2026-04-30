@@ -198,6 +198,22 @@ def get_portfolio_cash(cur):
     return float(cur.fetchone()["value"])
 
 
+def fetch_market_price(symbol):
+    clean = str(symbol or "").upper().strip()
+    if not clean:
+        raise ValueError("Symbol missing")
+    upstream = urllib.request.Request(
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(clean)}?range=1d&interval=1m",
+        headers={"User-Agent": "Mozilla/5.0 balance-tracker"},
+    )
+    with urllib.request.urlopen(upstream, timeout=5) as r:
+        data = json.loads(r.read().decode())
+    price = data.get("chart", {}).get("result", [{}])[0].get("meta", {}).get("regularMarketPrice")
+    if not isinstance(price, (int, float)) or price <= 0:
+        raise ValueError("Price missing")
+    return float(price)
+
+
 def find_account(cur, name):
     if not name:
         return None
@@ -640,6 +656,12 @@ class Handler(BaseHTTPRequestHandler):
                     return self.json({"results": results})
                 except Exception:
                     return self.json({"results": []})
+            if route == "/api/price":
+                symbol = (parse_qs(urlparse(self.path).query).get("symbol", [""])[0] or "").strip()
+                try:
+                    return self.json({"symbol": symbol.upper(), "price": fetch_market_price(symbol)})
+                except Exception:
+                    return self.json({"error": f"Ticker {symbol.upper() or '?'} returned no live price"}, 404)
             if route == "/api/holdings":
                 cur.execute("SELECT * FROM holdings WHERE deleted_at IS NULL ORDER BY symbol")
                 
