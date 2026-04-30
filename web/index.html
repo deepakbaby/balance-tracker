@@ -2,11 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="robots" content="noindex,nofollow" />
     <meta name="theme-color" content="#0f172a" />
+    <meta name="color-scheme" content="light" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Balance" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Balance Tracker</title>
     <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./icon-180x180.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192x192.png" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -55,11 +61,11 @@
               <strong id="netWorth">EUR 0</strong>
               <small id="netWorthDelta">No movement yet</small>
             </article>
-            <article class="metric">
+            <article class="metric metric-link" data-tab="accountsView" role="button" tabindex="0" aria-label="Open accounts">
               <span>Cash</span>
               <strong id="cashTotal">EUR 0</strong>
             </article>
-            <article class="metric">
+            <article class="metric metric-link" data-tab="portfolioView" role="button" tabindex="0" aria-label="Open portfolio">
               <span>Portfolio</span>
               <strong id="portfolioTotal">EUR 0</strong>
             </article>
@@ -86,7 +92,6 @@
               <h2>Recent Activity</h2>
               <div class="button-row">
                 <button class="text-button" id="addTxBtn">Manual</button>
-                <button class="text-button" data-tab="chatView">Chat</button>
               </div>
             </div>
             <div class="activity-list" id="activityList"></div>
@@ -218,7 +223,7 @@
           </section>
         </section>
 
-        <section class="view" id="chatView">
+        <section class="view hidden" id="chatView" aria-hidden="true">
           <header class="view-header">
             <h1>Chat</h1>
           </header>
@@ -242,9 +247,6 @@
         </button>
         <button class="tab" data-tab="analysisView" aria-label="Analysis" title="Analysis">
           <svg><use href="#icon-analysis"></use></svg>
-        </button>
-        <button class="tab" data-tab="chatView" aria-label="Chat" title="Chat">
-          <svg><use href="#icon-chat"></use></svg>
         </button>
       </nav>
     </div>
@@ -340,6 +342,7 @@
       <div class="modal" id="editModal" aria-modal="true" role="dialog">
         <div class="modal-header">
           <h2 id="modalTitle">Edit</h2>
+          <div class="modal-header-accessory" id="modalHeaderAccessory"></div>
           <button class="close-btn" id="modalCloseBtn" aria-label="Close">×</button>
         </div>
         <div class="modal-body">

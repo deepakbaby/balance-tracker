@@ -2,12 +2,20 @@
   "name": "Balance Tracker",
   "short_name": "Balance",
   "description": "Private Net Worth & Portfolio Tracker",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#1abc9c",
+  "background_color": "#f7f3ec",
+  "theme_color": "#0f172a",
   "orientation": "portrait",
   "icons": [
+    {
+      "src": "/icon-180x180.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "/icon-192x192.png",
       "sizes": "192x192",

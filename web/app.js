@@ -69,6 +69,7 @@ const els = {
   // modals
   modalBackdrop: document.querySelector("#modalBackdrop"),
   modalTitle: document.querySelector("#modalTitle"),
+  modalHeaderAccessory: document.querySelector("#modalHeaderAccessory"),
   modalFormFields: document.querySelector("#modalFormFields"),
   genericForm: document.querySelector("#genericForm"),
   modalDeleteBtn: document.querySelector("#modalDeleteBtn"),
@@ -194,6 +195,32 @@ function inferCurrency(symbol) { return String(symbol || "").includes(".") ? "EU
 function currencyOptions(selected = "EUR") {
   const currency = cleanCurrency(selected);
   return `<option value="EUR" ${currency === "EUR" ? "selected" : ""}>EUR</option><option value="USD" ${currency === "USD" ? "selected" : ""}>USD</option>`;
+}
+function currencySlider(selected = "EUR") {
+  const currency = cleanCurrency(selected);
+  return `
+    <div class="currency-slider" role="group" aria-label="Currency">
+      ${["EUR", "USD"].map(code => `
+        <button type="button" class="${code === currency ? "active" : ""}" data-currency-option="${code}" aria-pressed="${code === currency}">
+          ${code}
+        </button>
+      `).join("")}
+    </div>`;
+}
+function setModalCurrency(currency) {
+  const value = cleanCurrency(currency);
+  const input = els.modalFormFields.querySelector('input[name="currency"]');
+  if (input) input.value = value;
+  els.modalHeaderAccessory.querySelectorAll("[data-currency-option]").forEach(button => {
+    const active = button.dataset.currencyOption === value;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+function bindModalCurrencySlider() {
+  els.modalHeaderAccessory.querySelectorAll("[data-currency-option]").forEach(button => {
+    button.addEventListener("click", () => setModalCurrency(button.dataset.currencyOption));
+  });
 }
 function portfolioAssetValue() { return state.holdings.reduce((sum, h) => sum + holdingValueEur(h), 0); }
 function portfolioValue() { return portfolioAssetValue() + Math.max(state.portfolioCash || 0, 0); }
@@ -719,6 +746,7 @@ let currentModalAction = null;
 
 function openModal(title, fieldsHtml, onSave, onDelete, options = {}) {
   els.modalTitle.textContent = title;
+  els.modalHeaderAccessory.innerHTML = options.headerAccessoryHtml || "";
   els.modalFormFields.innerHTML = fieldsHtml;
   els.modalDeleteBtn.style.display = onDelete ? "block" : "none";
   els.modalSaveBtn.style.display = options.hideSave ? "none" : "inline-flex";
@@ -730,6 +758,7 @@ function openModal(title, fieldsHtml, onSave, onDelete, options = {}) {
 function closeModal() {
   els.modalBackdrop.classList.remove("active");
   currentModalAction = null;
+  els.modalHeaderAccessory.innerHTML = "";
   els.modalSaveBtn.style.display = "inline-flex";
   els.modalSaveBtn.textContent = "Save Changes";
   els.genericForm.reset();
@@ -927,12 +956,13 @@ function closePortfolioActionMenu() {
 }
 
 function openBuyHoldingModal() {
+  const defaultCurrency = "USD";
   openModal("Buy Holding", `
     <input name="symbol" placeholder="Symbol" autocomplete="off" required />
     <input name="quantity" type="number" inputmode="decimal" step="0.000001" placeholder="Quantity" required />
     <input name="cost" type="number" inputmode="decimal" step="0.01" placeholder="Purchase price per unit" required />
     <input name="price" type="number" inputmode="decimal" step="0.01" placeholder="Current price (optional)" />
-    <select name="currency" aria-label="Currency">${currencyOptions("USD")}</select>
+    <input name="currency" type="hidden" value="${defaultCurrency}" />
     <label class="cash-toggle">
       <input name="use_portfolio_cash" type="checkbox" />
       <span>
@@ -961,23 +991,24 @@ function openBuyHoldingModal() {
     });
     await loadServerState();
     showToast(`Holding ${symbol} added at ${currencyMoney(price, currency)}`);
-  });
+  }, null, { headerAccessoryHtml: currencySlider(defaultCurrency) });
   const symbolInput = els.modalFormFields.querySelector('input[name="symbol"]');
-  const currencySelect = els.modalFormFields.querySelector('select[name="currency"]');
+  bindModalCurrencySlider();
   if (symbolInput) {
     attachTickerAutocomplete(symbolInput, "symbolSuggestions");
     symbolInput.addEventListener("input", () => {
-      if (currencySelect) currencySelect.value = inferCurrency(symbolInput.value);
+      setModalCurrency(inferCurrency(symbolInput.value));
     });
   }
 }
 
 function openSellHoldingModal() {
+  const defaultCurrency = "USD";
   openModal("Sell Holding", `
     <input name="symbol" placeholder="Ticker — VWCE, AAPL..." autocomplete="off" required />
     <input name="quantity" type="number" inputmode="decimal" step="0.000001" placeholder="Quantity to sell" required />
     <input name="price" type="number" inputmode="decimal" step="0.01" placeholder="Sale price per unit (optional)" />
-    <select name="currency" aria-label="Currency">${currencyOptions("USD")}</select>
+    <input name="currency" type="hidden" value="${defaultCurrency}" />
     <small class="muted">Proceeds go to portfolio cash.</small>
   `, async fd => {
     const payload = Object.fromEntries(fd);
@@ -986,15 +1017,15 @@ function openSellHoldingModal() {
     const result = await api("/api/portfolio/sell", { method: "POST", body: JSON.stringify(payload) });
     await loadServerState();
     showToast(result.message || `Sold ${payload.quantity} ${payload.symbol}`);
-  }, null, { saveLabel: "Record Sale" });
+  }, null, { saveLabel: "Record Sale", headerAccessoryHtml: currencySlider(defaultCurrency) });
   const symbolInput = els.modalFormFields.querySelector('input[name="symbol"]');
-  const currencySelect = els.modalFormFields.querySelector('select[name="currency"]');
+  bindModalCurrencySlider();
   if (symbolInput) {
     attachTickerAutocomplete(symbolInput, "sellSymbolSuggestions");
     symbolInput.addEventListener("input", () => {
       const symbol = symbolInput.value.toUpperCase().trim();
       const holding = state.holdings.find(h => h.symbol === symbol);
-      if (currencySelect) currencySelect.value = holding?.currency || inferCurrency(symbol);
+      setModalCurrency(holding?.currency || inferCurrency(symbol));
     });
   }
 }
@@ -1091,11 +1122,17 @@ function timeAgo(iso) {
 function escapeHtml(v) { return String(v).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[c])); }
 
 document.querySelectorAll("[data-tab]").forEach(btn => {
-  btn.addEventListener("click", () => {
+  const openTab = () => {
     const t = btn.dataset.tab;
     document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === t));
     document.querySelectorAll(".tab").forEach(i => i.classList.toggle("active", i.dataset.tab === t));
     window.dispatchEvent(new Event('resize')); 
+  };
+  btn.addEventListener("click", openTab);
+  btn.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    openTab();
   });
 });
 
