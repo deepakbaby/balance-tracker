@@ -6,6 +6,14 @@ const CRYPTO_IDS = {
   XRP: "ripple", DOGE: "dogecoin", AVAX: "avalanche-2", DOT: "polkadot",
   MATIC: "matic-network", LINK: "chainlink"
 };
+const ACCOUNT_COLORS = [
+  ["#0ea5e9", "rgba(14, 165, 233, 0.10)"],
+  ["#10b981", "rgba(16, 185, 129, 0.10)"],
+  ["#f59e0b", "rgba(245, 158, 11, 0.12)"],
+  ["#8b5cf6", "rgba(139, 92, 246, 0.10)"],
+  ["#ec4899", "rgba(236, 72, 153, 0.10)"],
+  ["#14b8a6", "rgba(20, 184, 166, 0.10)"]
+];
 
 const seedState = {
   accounts: [], transactions: [], holdings: [],
@@ -224,10 +232,11 @@ function renderAccounts() {
     els.accountList.innerHTML = `<div class="empty-state"><svg><use href="#icon-wallet"></use></svg><h3>No Accounts Yet</h3><p>Add an account to get started.</p></div>`;
     return;
   }
-  els.accountList.innerHTML = state.accounts.map(acc => {
+  els.accountList.innerHTML = state.accounts.map((acc, index) => {
     const count = state.transactions.filter(tx => tx.accountId === acc.id).length;
+    const [accent, accentSoft] = ACCOUNT_COLORS[index % ACCOUNT_COLORS.length];
     return `
-      <article class="account-card" data-id="${acc.id}">
+      <article class="account-card" data-id="${acc.id}" style="--card-accent:${accent}; --card-accent-soft:${accentSoft};">
         <div class="account-top">
           <strong>${escapeHtml(acc.name)}</strong>
           <div class="card-value-actions">
@@ -250,7 +259,7 @@ function renderHoldings() {
     const value = h.quantity * h.price, pnl = value - (h.quantity * h.cost);
     const pnlPercent = h.cost ? (pnl / (h.quantity * h.cost)) * 100 : 0;
     return `
-      <article class="holding-card" data-id="${h.id}">
+      <article class="holding-row" data-id="${h.id}">
         <div class="holding-top">
           <strong>${escapeHtml(h.symbol)}</strong>
           <div class="card-value-actions">
@@ -440,11 +449,76 @@ function renderLineChart(target, height, points = buildNetWorthTrend()) {
   const min = low - padding;
   const max = high + padding;
   const span = max - min || 1;
-  const coords = points.map((p, i) => `${(i / (points.length - 1)) * width},${height - ((p.value - min) / span) * (height - 24) - 12}`);
+  const chartData = points.map((p, i) => {
+    const x = (i / (points.length - 1)) * width;
+    const y = height - ((p.value - min) / span) * (height - 24) - 12;
+    return { ...p, x, y };
+  });
+  const coords = chartData.map((point) => `${point.x},${point.y}`);
+  target._chartData = chartData;
+  target._chartWidth = width;
+  target._chartHeight = height;
   target.innerHTML = `
     <defs><linearGradient id="g${target.id}" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#059669"/></linearGradient></defs>
     <polyline points="${coords.join(" ")}" fill="none" stroke="url(#g${target.id})" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+    <line class="chart-crosshair" y1="8" y2="${height - 8}" stroke="#0f172a" stroke-width="1.5" stroke-dasharray="3,4" opacity="0" />
+    <circle class="chart-marker" r="5" fill="#ffffff" stroke="#059669" stroke-width="3" opacity="0" />
   `;
+  setupChartInteraction(target);
+}
+
+function setupChartInteraction(target) {
+  if (target._chartInteractive) return;
+  target._chartInteractive = true;
+
+  const update = (event) => {
+    const points = target._chartData || [];
+    if (!points.length) return;
+    const rect = target.getBoundingClientRect();
+    const x = Math.min(Math.max(((event.clientX - rect.left) / rect.width) * target._chartWidth, 0), target._chartWidth);
+    const nearest = points.reduce((best, point) => Math.abs(point.x - x) < Math.abs(best.x - x) ? point : best, points[0]);
+    const crosshair = target.querySelector(".chart-crosshair");
+    const marker = target.querySelector(".chart-marker");
+    const tooltip = ensureChartTooltip(target);
+
+    crosshair.setAttribute("x1", nearest.x);
+    crosshair.setAttribute("x2", nearest.x);
+    crosshair.setAttribute("opacity", "0.5");
+    marker.setAttribute("cx", nearest.x);
+    marker.setAttribute("cy", nearest.y);
+    marker.setAttribute("opacity", "1");
+    tooltip.textContent = `${formatChartDate(nearest.date)} · ${money(nearest.value)}`;
+    tooltip.classList.add("active");
+    tooltip.style.left = `${(nearest.x / target._chartWidth) * 100}%`;
+    tooltip.style.top = `${Math.max((nearest.y / target._chartHeight) * 100, 12)}%`;
+  };
+
+  const hide = () => {
+    target.querySelector(".chart-crosshair")?.setAttribute("opacity", "0");
+    target.querySelector(".chart-marker")?.setAttribute("opacity", "0");
+    ensureChartTooltip(target).classList.remove("active");
+  };
+
+  target.addEventListener("pointerdown", (event) => {
+    target.setPointerCapture?.(event.pointerId);
+    update(event);
+  });
+  target.addEventListener("pointermove", update);
+  target.addEventListener("pointerleave", hide);
+}
+
+function ensureChartTooltip(target) {
+  let tooltip = target.parentElement.querySelector(".chart-tooltip");
+  if (!tooltip) {
+    tooltip = document.createElement("div");
+    tooltip.className = "chart-tooltip";
+    target.parentElement.appendChild(tooltip);
+  }
+  return tooltip;
+}
+
+function formatChartDate(date) {
+  return new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 // ----------------------------------------
@@ -574,7 +648,7 @@ function bindCardActions(rootEl, openDetail, openEdit) {
     });
   });
   if (openDetail) {
-    rootEl.querySelectorAll(".account-card, .holding-card").forEach(card => {
+    rootEl.querySelectorAll(".account-card, .holding-row").forEach(card => {
       card.addEventListener("click", e => {
         if (e.target.closest(".action-btn")) return;
         openDetail(card.dataset.id);

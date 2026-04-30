@@ -236,7 +236,7 @@ button:active {
 }
 
 /* Cards — iOS grouped style */
-.metric, .panel, .account-card, .holding-card, .insight-card, .portfolio-hero {
+.metric, .panel, .account-card, .insight-card, .portfolio-hero {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -245,11 +245,11 @@ button:active {
 }
 
 @media (hover: hover) {
-  .account-card:hover, .holding-card:hover, .panel:hover {
+  .account-card:hover, .holding-row:hover, .panel:hover {
     box-shadow: var(--shadow-sm);
   }
 }
-.account-card:active, .holding-card:active { transform: scale(0.985); }
+.account-card:active, .holding-row:active { transform: scale(0.985); }
 
 .metric {
   min-height: 104px;
@@ -335,11 +335,57 @@ button:active {
 
 .button-row { display: flex; align-items: center; gap: 8px; }
 
+.chart-wrap, .mini-chart-wrap {
+  position: relative;
+}
+
 .chart-wrap { height: 200px; }
-#netWorthChart, #analysisChart { display: block; width: 100%; height: 100%; }
+#netWorthChart, #analysisChart {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
 .mini-chart-wrap { height: 160px; }
 
+.chart-tooltip {
+  position: absolute;
+  z-index: 2;
+  min-width: 128px;
+  padding: 7px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, calc(-100% - 12px));
+  transition: opacity 0.12s ease;
+}
+
+.chart-tooltip.active {
+  opacity: 1;
+}
+
 .activity-list, .account-list, .holding-list, .bar-list, .signal-list, .chat-log { display: grid; gap: 12px; }
+
+.holding-list {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--border-radius-lg);
+  background: var(--panel);
+}
+
+.holding-list:has(.empty-state) {
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
 
 .activity-item, .bar-row {
   display: grid;
@@ -431,7 +477,45 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
 }
 
-.account-card, .holding-card { padding: 18px; cursor: pointer; }
+.account-card {
+  position: relative;
+  padding: 18px;
+  cursor: pointer;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 0% 0%, var(--card-accent-soft), transparent 44%),
+    var(--panel);
+  border-color: color-mix(in srgb, var(--card-accent) 24%, var(--line));
+}
+
+.account-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 4px;
+  border-radius: 0 999px 999px 0;
+  background: var(--card-accent);
+}
+
+.holding-row {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.holding-row:last-child {
+  border-bottom: 0;
+}
+
+.holding-row:hover {
+  background: var(--soft-panel);
+}
 
 .card-value-actions {
   display: flex;
@@ -473,9 +557,9 @@ input:focus, select:focus, textarea:focus {
   opacity: 1;
 }
 
-.account-card small, .holding-card small { color: var(--muted); }
-.holding-card small.positive { color: var(--good); }
-.holding-card small.negative { color: var(--danger); }
+.account-card small, .holding-row small { color: var(--muted); }
+.holding-row small.positive { color: var(--good); }
+.holding-row small.negative { color: var(--danger); }
 
 .portfolio-hero {
   margin-bottom: 16px;
@@ -520,8 +604,18 @@ input:focus, select:focus, textarea:focus {
 .holding-meta {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
-  margin-top: 10px;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.holding-top {
+  line-height: 1.15;
+}
+
+.holding-top strong {
+  font-size: 15px;
 }
 
 .kpi-strip {
@@ -644,6 +738,7 @@ input:focus, select:focus, textarea:focus {
   padding: 0 18px;
   border-radius: 999px;
   font-weight: 700;
+  opacity: 1;
 }
 
 .action-prompt .confirm-btn {
