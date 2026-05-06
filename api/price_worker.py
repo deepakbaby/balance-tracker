@@ -43,23 +43,22 @@ def fetch_prices():
             elif yf_sym == "ETH": yf_sym = "ETH-USD"
             
             ticker = yf.Ticker(yf_sym)
-            history = ticker.history(period="1d")
-            
+            history = ticker.history(period="5d")
+
             if not history.empty:
-                price = history['Close'].iloc[-1]
-                
-                # Update holding state natively
+                price = float(history['Close'].iloc[-1])
+                prev_close = float(history['Close'].iloc[-2]) if len(history) >= 2 else None
+
                 cur.execute(
-                    "UPDATE holdings SET price = %s, last_price_at = CURRENT_TIMESTAMP WHERE symbol = %s",
-                    (float(price), symbol)
+                    "UPDATE holdings SET price = %s, previous_close = %s, last_price_at = CURRENT_TIMESTAMP WHERE symbol = %s",
+                    (price, prev_close, symbol)
                 )
-                
-                # Log immutable snapshot
+
                 cur.execute(
                     "INSERT INTO price_snapshots (symbol, price, source) VALUES (%s, %s, %s)",
-                    (symbol, float(price), "yfinance")
+                    (symbol, price, "yfinance")
                 )
-                print(f"Updated {symbol} -> {price:,.2f}")
+                print(f"Updated {symbol} -> {price:,.2f} (prev {prev_close})")
             else:
                 print(f"Warning: No valid price history found for natively mapped {yf_sym}.")
         except Exception as e:

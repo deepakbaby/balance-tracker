@@ -693,6 +693,37 @@ class Handler(BaseHTTPRequestHandler):
                     return self.json({"symbol": symbol.upper(), "price": fetch_market_price(symbol)})
                 except Exception:
                     return self.json({"error": f"Ticker {symbol.upper() or '?'} returned no live price"}, 404)
+            if route == "/api/price-history":
+                qs = parse_qs(urlparse(self.path).query)
+                symbol = (qs.get("symbol", [""])[0] or "").strip().upper()
+                rng = (qs.get("range", ["1mo"])[0] or "1mo").strip()
+                allowed_ranges = {"5d", "1mo", "3mo", "6mo", "1y", "5y", "max"}
+                if rng not in allowed_ranges:
+                    rng = "1mo"
+                interval = "1d" if rng in {"5d", "1mo", "3mo", "6mo", "1y"} else "1wk"
+                if not symbol:
+                    return self.json({"error": "Symbol missing"}, 400)
+                try:
+                    yf_sym = symbol
+                    if yf_sym == "BTC": yf_sym = "BTC-USD"
+                    elif yf_sym == "ETH": yf_sym = "ETH-USD"
+                    upstream = urllib.request.Request(
+                        f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(yf_sym)}?range={rng}&interval={interval}",
+                        headers={"User-Agent": "Mozilla/5.0 balance-tracker"},
+                    )
+                    with urllib.request.urlopen(upstream, timeout=6) as r:
+                        data = json.loads(r.read().decode())
+                    result = (data.get("chart", {}).get("result") or [{}])[0]
+                    timestamps = result.get("timestamp") or []
+                    closes = (((result.get("indicators") or {}).get("quote") or [{}])[0].get("close")) or []
+                    points = [
+                        {"t": int(ts) * 1000, "c": float(c)}
+                        for ts, c in zip(timestamps, closes)
+                        if isinstance(c, (int, float))
+                    ]
+                    return self.json({"symbol": symbol, "range": rng, "points": points})
+                except Exception:
+                    return self.json({"error": f"No history for {symbol}"}, 404)
             if route == "/api/fx":
                 return self.json({"base": "EUR", "rates": get_fx_rates()})
             if route == "/api/holdings":
@@ -702,6 +733,7 @@ class Handler(BaseHTTPRequestHandler):
                     d = dict(row)
                     d["id"] = str(d["id"])
                     for field in ["quantity", "cost", "price"]: d[field] = float(d[field])
+                    d["previous_close"] = float(d["previous_close"]) if d.get("previous_close") is not None else None
                     d["currency"] = clean_currency(d.get("currency"))
                     if d.get("created_at"): d["created_at"] = str(d["created_at"])
                     if d.get("last_price_at"): d["last_price_at"] = str(d["last_price_at"])

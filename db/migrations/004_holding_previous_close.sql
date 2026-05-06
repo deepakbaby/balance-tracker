@@ -1,0 +1,2 @@
+ALTER TABLE holdings
+ADD COLUMN IF NOT EXISTS previous_close REAL;

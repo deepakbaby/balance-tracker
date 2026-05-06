@@ -247,11 +247,13 @@ button:active {
 /* Detailed View Overlays */
 .detail-view {
   display: none;
-  position: absolute;
-  top: 0; left: 0; right: 0; min-height: 100vh;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
   background: var(--bg);
   z-index: 50;
-  padding: 18px 16px 104px;
+  padding: 18px 16px calc(104px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .detail-view.active { display: block; }
@@ -263,14 +265,21 @@ button:active {
   gap: 12px;
   margin-bottom: 24px;
 }
-.detail-nav button {
-  background: white;
+.detail-nav .detail-back-btn {
+  background: var(--panel);
   border: 1px solid var(--line);
   color: var(--ink);
-  padding: 8px 16px;
-  border-radius: var(--border-radius-sm);
-  font-weight: 600;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+  flex-shrink: 0;
 }
+.detail-nav .detail-back-btn:active { transform: scale(0.94); }
 
 .metric-grid {
   display: grid;
@@ -602,6 +611,72 @@ button:active {
 
 .positive { color: var(--good); }
 .negative { color: var(--danger); }
+
+.holding-chart-card {
+  margin-top: 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+}
+.holding-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.holding-chart-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.holding-chart-ranges {
+  display: inline-flex;
+  gap: 4px;
+  background: var(--bg);
+  border-radius: 999px;
+  padding: 3px;
+  border: 1px solid var(--line);
+}
+.holding-chart-ranges button {
+  background: transparent;
+  border: 0;
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.holding-chart-ranges button.active {
+  background: var(--ink);
+  color: var(--panel);
+}
+.holding-chart {
+  width: 100%;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.holding-chart-svg {
+  width: 100%;
+  height: 140px;
+  display: block;
+}
+.holding-chart-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--muted, #888);
+}
+.chart-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 140px;
+}
 
 .insight-grid {
   display: grid;

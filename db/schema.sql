@@ -27,6 +27,7 @@ CREATE TABLE holdings (
   quantity REAL NOT NULL,
   cost REAL NOT NULL,
   price REAL NOT NULL,
+  previous_close REAL,
   currency TEXT NOT NULL DEFAULT 'EUR',
   last_price_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP

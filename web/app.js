@@ -157,7 +157,8 @@ async function loadServerState() {
   })).reverse();
   state.holdings = holdings.map(h => ({
     id: h.id, symbol: h.symbol, quantity: Number(h.quantity || 0), cost: Number(h.cost || 0),
-    price: Number(h.price || 0), currency: cleanCurrency(h.currency), lastPriceAt: h.last_price_at, createdAt: h.created_at
+    price: Number(h.price || 0), previousClose: h.previous_close != null ? Number(h.previous_close) : null,
+    currency: cleanCurrency(h.currency), lastPriceAt: h.last_price_at, createdAt: h.created_at
   }));
   state.chats = chats.length ? chats.map(c => ({ 
     id: c.id, role: c.role, text: c.text, createdAt: c.created_at, 
@@ -926,6 +927,12 @@ function openAccountDetail(id) {
   els.accountDetailView.classList.add("active");
 }
 
+function setSignedMetric(el, signedText, isPositive) {
+  el.textContent = signedText;
+  el.classList.remove("positive", "negative", "muted");
+  el.classList.add(isPositive == null ? "muted" : isPositive ? "positive" : "negative");
+}
+
 function openHoldingDetail(id) {
   const h = state.holdings.find(x => x.id === id);
   if (!h) return;
@@ -938,27 +945,101 @@ function openHoldingDetail(id) {
   document.querySelector("#holdingDetailPrice").textContent = currencyMoney(h.price, h.currency);
   document.querySelector("#holdingDetailCost").textContent = currencyMoney(h.cost, h.currency);
   document.querySelector("#holdingDetailPriceDate").textContent = h.lastPriceAt ? `Updated ${new Date(h.lastPriceAt).toLocaleString()}` : "Manual";
-  
+
+  const dayEl = document.querySelector("#holdingDetailDayChange");
+  if (h.previousClose && h.previousClose > 0) {
+    const dayDelta = (h.price - h.previousClose) * h.quantity;
+    const dayPct = ((h.price - h.previousClose) / h.previousClose) * 100;
+    const sign = dayDelta >= 0 ? "+" : "";
+    setSignedMetric(dayEl, `${sign}${currencyMoney(dayDelta, h.currency)} (${sign}${dayPct.toFixed(2)}%)`, dayDelta >= 0);
+  } else {
+    setSignedMetric(dayEl, "—", null);
+  }
+
+  const sinceEl = document.querySelector("#holdingDetailSinceBuy");
+  const totalCost = h.cost * h.quantity;
+  if (totalCost > 0) {
+    const sinceDelta = (h.price - h.cost) * h.quantity;
+    const sincePct = ((h.price - h.cost) / h.cost) * 100;
+    const sign = sinceDelta >= 0 ? "+" : "";
+    setSignedMetric(sinceEl, `${sign}${currencyMoney(sinceDelta, h.currency)} (${sign}${sincePct.toFixed(2)}%)`, sinceDelta >= 0);
+  } else {
+    setSignedMetric(sinceEl, "—", null);
+  }
+
   els.holdingDetailView.dataset.id = id;
   els.holdingDetailView.classList.add("active");
+  loadHoldingChart(h, currentChartRange);
 }
+
+let currentChartRange = "1mo";
+
+async function loadHoldingChart(holding, range) {
+  const chartEl = document.querySelector("#holdingChart");
+  chartEl.innerHTML = `<div class="chart-state muted">Loading…</div>`;
+  document.querySelectorAll("#holdingChartRanges button").forEach(b => {
+    b.classList.toggle("active", b.dataset.range === range);
+  });
+  try {
+    const data = await api(`/api/price-history?symbol=${encodeURIComponent(holding.symbol)}&range=${range}`);
+    if (!data?.points?.length) {
+      chartEl.innerHTML = `<div class="chart-state muted">No data</div>`;
+      return;
+    }
+    chartEl.innerHTML = renderHoldingSparkline(data.points, holding);
+  } catch {
+    chartEl.innerHTML = `<div class="chart-state muted">Could not load chart</div>`;
+  }
+}
+
+function renderHoldingSparkline(points, holding) {
+  const w = 320, h = 140, pad = 6;
+  const closes = points.map(p => p.c);
+  const avgCost = holding && holding.cost > 0 ? holding.cost : null;
+  const minSrc = avgCost != null ? Math.min(Math.min(...closes), avgCost) : Math.min(...closes);
+  const maxSrc = avgCost != null ? Math.max(Math.max(...closes), avgCost) : Math.max(...closes);
+  const span = (maxSrc - minSrc) || 1;
+  const yFor = v => h - pad - ((v - minSrc) / span) * (h - pad * 2);
+  const stepX = (w - pad * 2) / Math.max(points.length - 1, 1);
+  const coords = points.map((p, i) => [pad + i * stepX, yFor(p.c)]);
+  const linePath = coords.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+  const areaPath = `${linePath} L${coords.at(-1)[0].toFixed(1)} ${h - pad} L${coords[0][0].toFixed(1)} ${h - pad} Z`;
+  const up = closes.at(-1) >= closes[0];
+  const stroke = up ? "var(--good, #11c270)" : "var(--danger, #ff4d4f)";
+  const first = points[0], last = points.at(-1);
+  const fmt = ts => new Date(ts).toLocaleDateString();
+  let avgLine = "";
+  let avgLabel = "";
+  if (avgCost != null) {
+    const y = yFor(avgCost).toFixed(1);
+    const above = avgCost > closes.at(-1);
+    avgLine = `<line x1="${pad}" x2="${w - pad}" y1="${y}" y2="${y}" stroke="var(--ink, #333)" stroke-width="1" stroke-dasharray="4 4" stroke-opacity="0.55" />`;
+    avgLabel = `<text x="${w - pad - 2}" y="${(Number(y) + (above ? -4 : 11)).toFixed(1)}" text-anchor="end" font-size="10" fill="var(--ink, #333)" fill-opacity="0.7">Avg ${avgCost.toFixed(2)}</text>`;
+  }
+  return `
+    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" class="holding-chart-svg" aria-label="Price history">
+      <path d="${areaPath}" fill="${stroke}" fill-opacity="0.12" />
+      <path d="${linePath}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+      ${avgLine}
+      ${avgLabel}
+    </svg>
+    <div class="holding-chart-axis">
+      <span>${fmt(first.t)} · ${first.c.toFixed(2)}</span>
+      <span>${fmt(last.t)} · ${last.c.toFixed(2)}</span>
+    </div>`;
+}
+
+document.querySelector("#holdingChartRanges").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-range]");
+  if (!btn) return;
+  currentChartRange = btn.dataset.range;
+  const id = els.holdingDetailView.dataset.id;
+  const h = state.holdings.find(x => x.id === id);
+  if (h) loadHoldingChart(h, currentChartRange);
+});
 
 document.querySelector("#closeAccountDetail").addEventListener("click", () => els.accountDetailView.classList.remove("active"));
 document.querySelector("#closeHoldingDetail").addEventListener("click", () => els.holdingDetailView.classList.remove("active"));
-
-document.querySelector("#updatePriceForm").addEventListener("submit", async e => {
-  e.preventDefault();
-  const id = els.holdingDetailView.dataset.id;
-  const h = state.holdings.find(x => x.id === id);
-  const newPrice = Number(document.querySelector("#newPriceInput").value);
-  if (h && newPrice) {
-    await api(`/api/prices`, { method: "POST", body: JSON.stringify({ prices: [{ symbol: h.symbol, price: newPrice }] }) });
-    showToast("Price updated");
-    await loadServerState();
-    openHoldingDetail(id); // Re-render
-    document.querySelector("#newPriceInput").value = "";
-  }
-});
 
 // Original Add Forms
 document.querySelector("#addAccountButton").addEventListener("click", () => {
