@@ -1121,10 +1121,14 @@ input:focus, select:focus, textarea:focus {
   grid-template-columns: 1fr;
   justify-items: center;
   gap: 0;
+  width: 100%;
+  min-width: 0;
 }
 .allocation-hero--solo .allocation-pie-wrap {
-  width: min(72vw, 320px);
-  height: min(72vw, 320px);
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  aspect-ratio: 1 / 1;
 }
 .allocation-hero--solo .allocation-pie-center strong {
   font-size: 26px;
@@ -1265,7 +1269,7 @@ input:focus, select:focus, textarea:focus {
     gap: 14px;
   }
 
-  .allocation-pie-wrap,
+  .allocation-hero:not(.allocation-hero--solo) .allocation-pie-wrap,
   .allocation-pie-empty {
     width: 116px;
     height: 116px;
