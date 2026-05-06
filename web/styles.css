@@ -1117,6 +1117,22 @@ input:focus, select:focus, textarea:focus {
   align-items: center;
   gap: 18px;
 }
+.allocation-hero--solo {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  gap: 0;
+}
+.allocation-hero--solo .allocation-pie-wrap {
+  width: min(72vw, 320px);
+  height: min(72vw, 320px);
+}
+.allocation-hero--solo .allocation-pie-center strong {
+  font-size: 26px;
+}
+.allocation-hero--solo .allocation-pie-center small {
+  font-size: 13px;
+  margin-top: 2px;
+}
 
 .allocation-pie-wrap {
   position: relative;

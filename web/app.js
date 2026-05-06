@@ -394,14 +394,9 @@ function renderPortfolioAllocationPie() {
     return `<path d="${d}" fill="${s.color}" data-allocation-idx="${i}" tabindex="0" role="button" aria-label="${escapeHtml(s.label)}: ${money(s.value)}"></path>`;
   }).join("");
 
-  const legend = segments.map((s, i) => {
-    const pct = (s.value / total) * 100;
-    return `<span data-allocation-idx="${i}" role="button" tabindex="0"><i style="background:${s.color}"></i>${escapeHtml(s.label)} ${pct.toFixed(0)}%</span>`;
-  }).join("");
-
   const segmentsJson = encodeURIComponent(JSON.stringify(segments));
   return `
-    <div class="allocation-hero" data-allocation-segments="${segmentsJson}" data-allocation-total="${total}">
+    <div class="allocation-hero allocation-hero--solo" data-allocation-segments="${segmentsJson}" data-allocation-total="${total}">
       <div class="allocation-pie-wrap">
         <svg class="allocation-pie-svg" viewBox="0 0 120 120" aria-label="Portfolio allocation">
           ${slices}
@@ -411,10 +406,6 @@ function renderPortfolioAllocationPie() {
           <span class="allocation-pie-label">Total</span>
           <strong>${money(total)}</strong>
         </div>
-      </div>
-      <div class="allocation-copy">
-        <span>Portfolio allocation</span>
-        <div class="growth-legend allocation-legend">${legend}</div>
       </div>
     </div>
     <div class="allocation-breakdown" id="allocationBreakdown"></div>
