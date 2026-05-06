@@ -1125,10 +1125,12 @@ input:focus, select:focus, textarea:focus {
   min-width: 0;
 }
 .allocation-hero--solo .allocation-pie-wrap {
-  width: 100%;
-  max-width: 320px;
+  width: min(100%, 320px);
+  max-width: 100%;
   height: auto;
   aspect-ratio: 1 / 1;
+  justify-self: center;
+  margin-inline: auto;
 }
 .allocation-hero--solo .allocation-pie-center strong {
   font-size: 26px;
