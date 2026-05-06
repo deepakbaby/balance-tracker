@@ -346,31 +346,136 @@ function renderPortfolioGrowth() {
       </section>
     </div>
   `;
+  bindAllocationInteractions();
 }
 
+const ALLOCATION_PALETTE = [
+  "#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6",
+  "#14b8a6", "#f97316", "#ec4899", "#22c55e", "#3b82f6",
+  "#eab308", "#a855f7"
+];
+const CASH_COLOR = "#0ea5e9";
+
 function renderPortfolioAllocationPie() {
-  const assets = portfolioAssetValue();
   const availableCash = Math.max(state.portfolioCash || 0, 0);
-  const total = Math.max(assets + availableCash, 1);
-  const assetPct = (assets / total) * 100;
-  const cashPct = 100 - assetPct;
+  const segments = state.holdings
+    .map(h => ({ id: h.id, label: h.symbol, kind: "holding", value: holdingValueEur(h) }))
+    .filter(s => s.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .map((s, i) => ({ ...s, color: ALLOCATION_PALETTE[i % ALLOCATION_PALETTE.length] }));
+  if (availableCash > 0) segments.push({ id: "cash", label: "Cash", kind: "cash", value: availableCash, color: CASH_COLOR });
+  const total = segments.reduce((sum, s) => sum + s.value, 0);
+
+  if (!total) {
+    return `
+      <div class="allocation-hero">
+        <div class="allocation-pie-empty"></div>
+        <div class="allocation-copy">
+          <span>Portfolio allocation</span>
+          <strong>${money(0)}</strong>
+          <small class="muted">Add holdings or cash to see allocation.</small>
+        </div>
+      </div>`;
+  }
+
+  const r = 50, cx = 60, cy = 60;
+  let acc = 0;
+  const slices = segments.map((s, i) => {
+    const startAngle = (acc / total) * Math.PI * 2 - Math.PI / 2;
+    acc += s.value;
+    const endAngle = (acc / total) * Math.PI * 2 - Math.PI / 2;
+    const large = endAngle - startAngle > Math.PI ? 1 : 0;
+    const x1 = cx + r * Math.cos(startAngle), y1 = cy + r * Math.sin(startAngle);
+    const x2 = cx + r * Math.cos(endAngle), y2 = cy + r * Math.sin(endAngle);
+    const single = segments.length === 1;
+    const d = single
+      ? `M ${cx - r} ${cy} a ${r} ${r} 0 1 0 ${r * 2} 0 a ${r} ${r} 0 1 0 ${-r * 2} 0`
+      : `M ${cx} ${cy} L ${x1.toFixed(3)} ${y1.toFixed(3)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(3)} ${y2.toFixed(3)} Z`;
+    return `<path d="${d}" fill="${s.color}" data-allocation-idx="${i}" tabindex="0" role="button" aria-label="${escapeHtml(s.label)}: ${money(s.value)}"></path>`;
+  }).join("");
+
+  const legend = segments.map((s, i) => {
+    const pct = (s.value / total) * 100;
+    return `<span data-allocation-idx="${i}" role="button" tabindex="0"><i style="background:${s.color}"></i>${escapeHtml(s.label)} ${pct.toFixed(0)}%</span>`;
+  }).join("");
+
+  const segmentsJson = encodeURIComponent(JSON.stringify(segments));
   return `
-    <div class="allocation-hero">
-      <div class="allocation-pie" style="--asset-pct:${assetPct}%;"></div>
-      <div class="allocation-copy">
-        <span>Portfolio allocation</span>
-        <strong>${money(total)}</strong>
-        <div class="growth-legend">
-          <span><i class="legend-value"></i>Stocks / ETFs ${assetPct.toFixed(0)}%</span>
-          <span><i class="legend-cash"></i>Cash ${cashPct.toFixed(0)}%</span>
+    <div class="allocation-hero" data-allocation-segments="${segmentsJson}" data-allocation-total="${total}">
+      <div class="allocation-pie-wrap">
+        <svg class="allocation-pie-svg" viewBox="0 0 120 120" aria-label="Portfolio allocation">
+          ${slices}
+          <circle cx="${cx}" cy="${cy}" r="${r * 0.58}" fill="var(--panel)" pointer-events="none"></circle>
+        </svg>
+        <div class="allocation-pie-center" id="allocationPieCenter">
+          <span class="allocation-pie-label">Total</span>
+          <strong>${money(total)}</strong>
         </div>
       </div>
+      <div class="allocation-copy">
+        <span>Portfolio allocation</span>
+        <div class="growth-legend allocation-legend">${legend}</div>
+      </div>
     </div>
-    <div class="allocation-breakdown">
-      <article><span>Invested assets</span><strong>${money(assets)}</strong></article>
-      <article><span>Available cash</span><strong>${money(availableCash)}</strong></article>
-    </div>
+    <div class="allocation-breakdown" id="allocationBreakdown"></div>
   `;
+}
+
+function bindAllocationInteractions() {
+  const hero = document.querySelector(".allocation-hero[data-allocation-segments]");
+  if (!hero) return;
+  let segments;
+  try { segments = JSON.parse(decodeURIComponent(hero.dataset.allocationSegments)); }
+  catch { return; }
+  const total = Number(hero.dataset.allocationTotal) || 1;
+  const center = hero.querySelector("#allocationPieCenter");
+  const breakdown = document.querySelector("#allocationBreakdown");
+
+  const setActive = idx => {
+    hero.querySelectorAll("[data-allocation-idx]").forEach(el => {
+      el.classList.toggle("is-active", Number(el.dataset.allocationIdx) === idx);
+    });
+    if (idx == null) {
+      center.innerHTML = `<span class="allocation-pie-label">Total</span><strong>${money(total)}</strong>`;
+      breakdown.innerHTML = "";
+      return;
+    }
+    const s = segments[idx];
+    const pct = (s.value / total) * 100;
+    center.innerHTML = `<span class="allocation-pie-label" style="color:${s.color}">${escapeHtml(s.label)}</span><strong>${money(s.value)}</strong><small>${pct.toFixed(1)}%</small>`;
+    if (s.kind === "holding") {
+      const h = state.holdings.find(x => x.id === s.id);
+      const pnl = h ? holdingPnlEur(h) : 0;
+      const pnlClass = pnl >= 0 ? "positive" : "negative";
+      const sign = pnl >= 0 ? "+" : "";
+      breakdown.innerHTML = `
+        <article>
+          <span>${escapeHtml(s.label)} · ${h ? `${h.quantity} @ ${currencyMoney(h.price, h.currency)}` : ""}</span>
+          <strong>${money(s.value)} <small class="${pnlClass}">${sign}${money(pnl)}</small></strong>
+          <button type="button" class="allocation-open-btn" data-allocation-open="${escapeHtml(s.id)}">Open ${escapeHtml(s.label)} →</button>
+        </article>`;
+    } else {
+      breakdown.innerHTML = `
+        <article>
+          <span>Available cash</span>
+          <strong>${money(s.value)}</strong>
+        </article>`;
+    }
+  };
+
+  hero.addEventListener("click", e => {
+    const target = e.target.closest("[data-allocation-idx]");
+    if (!target) return;
+    const idx = Number(target.dataset.allocationIdx);
+    const currentlyActive = target.classList.contains("is-active");
+    setActive(currentlyActive ? null : idx);
+  });
+  document.addEventListener("click", e => {
+    const openBtn = e.target.closest("[data-allocation-open]");
+    if (!openBtn) return;
+    const id = openBtn.dataset.allocationOpen;
+    if (id && id !== "cash") openHoldingDetail(id);
+  });
 }
 
 function buildPortfolioGrowthPoints() {

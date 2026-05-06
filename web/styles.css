@@ -1118,14 +1118,83 @@ input:focus, select:focus, textarea:focus {
   gap: 18px;
 }
 
-.allocation-pie {
+.allocation-pie-wrap {
+  position: relative;
+  width: 138px;
+  height: 138px;
+}
+.allocation-pie-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.12));
+}
+.allocation-pie-svg path {
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+  transform-origin: 60px 60px;
+  transform-box: fill-box;
+}
+.allocation-pie-svg path:hover,
+.allocation-pie-svg path.is-active {
+  transform: scale(1.04);
+}
+.allocation-pie-svg path:not(.is-active) {
+  opacity: 0.95;
+}
+.allocation-pie-wrap:has(path.is-active) .allocation-pie-svg path:not(.is-active) {
+  opacity: 0.45;
+}
+.allocation-pie-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+  padding: 0 12px;
+}
+.allocation-pie-center .allocation-pie-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.allocation-pie-center strong {
+  font-size: 18px;
+  line-height: 1.1;
+  margin-top: 2px;
+}
+.allocation-pie-center small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.allocation-pie-empty {
   width: 138px;
   height: 138px;
   border-radius: 50%;
-  background:
-    radial-gradient(circle at center, var(--panel) 0 48%, transparent 49%),
-    conic-gradient(var(--accent) 0 var(--asset-pct), #0ea5e9 0 100%);
-  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08), var(--shadow-sm);
+  border: 6px dashed var(--line);
+}
+.allocation-legend span[data-allocation-idx] {
+  cursor: pointer;
+}
+.allocation-legend span.is-active {
+  color: var(--ink);
+  font-weight: 600;
+}
+.allocation-open-btn {
+  margin-top: 10px;
+  background: var(--ink);
+  color: var(--panel);
+  border: 0;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  cursor: pointer;
 }
 
 .allocation-copy span, .allocation-breakdown span {
@@ -1156,6 +1225,8 @@ input:focus, select:focus, textarea:focus {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
+.allocation-breakdown:empty { display: none; }
+.allocation-breakdown:has(article:only-child) { grid-template-columns: 1fr; }
 
 .allocation-breakdown article {
   min-width: 0;
@@ -1178,7 +1249,8 @@ input:focus, select:focus, textarea:focus {
     gap: 14px;
   }
 
-  .allocation-pie {
+  .allocation-pie-wrap,
+  .allocation-pie-empty {
     width: 116px;
     height: 116px;
   }
