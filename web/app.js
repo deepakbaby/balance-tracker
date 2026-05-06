@@ -194,6 +194,7 @@ function toEur(value, currency = "EUR") { return (Number(value) || 0) * (state.f
 function currencyMoney(value, currency = "EUR") {
   return new Intl.NumberFormat("en-BE", {
     style: "currency", currency: cleanCurrency(currency),
+    currencyDisplay: "narrowSymbol",
     maximumFractionDigits: Math.abs(value) >= 1000 ? 0 : 2
   }).format(value || 0);
 }

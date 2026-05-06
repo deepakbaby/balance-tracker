@@ -612,6 +612,13 @@ button:active {
 .positive { color: var(--good); }
 .negative { color: var(--danger); }
 
+.metric .metric-compact {
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.25;
+  word-break: break-word;
+}
+
 .holding-chart-card {
   margin-top: 20px;
   background: var(--panel);
