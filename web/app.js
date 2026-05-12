@@ -1278,40 +1278,68 @@ async function loadHoldingChart(holding, range) {
 }
 
 function renderHoldingSparkline(points, holding) {
-  const w = 320, h = 140, pad = 6;
+  const w = 360, h = 160;
+  const padL = 44, padR = 10, padT = 10, padB = 22;
+  const plotW = w - padL - padR;
+  const plotH = h - padT - padB;
   const closes = points.map(p => p.c);
   const avgCost = holding && holding.cost > 0 ? holding.cost : null;
   const minSrc = avgCost != null ? Math.min(Math.min(...closes), avgCost) : Math.min(...closes);
   const maxSrc = avgCost != null ? Math.max(Math.max(...closes), avgCost) : Math.max(...closes);
   const span = (maxSrc - minSrc) || 1;
-  const yFor = v => h - pad - ((v - minSrc) / span) * (h - pad * 2);
-  const stepX = (w - pad * 2) / Math.max(points.length - 1, 1);
-  const coords = points.map((p, i) => [pad + i * stepX, yFor(p.c)]);
+  const padSpan = span * 0.08;
+  const yMin = minSrc - padSpan, yMax = maxSrc + padSpan;
+  const yRange = yMax - yMin;
+  const yFor = v => padT + ((yMax - v) / yRange) * plotH;
+  const xFor = i => padL + (i / Math.max(points.length - 1, 1)) * plotW;
+  const coords = points.map((p, i) => [xFor(i), yFor(p.c)]);
   const linePath = coords.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
-  const areaPath = `${linePath} L${coords.at(-1)[0].toFixed(1)} ${h - pad} L${coords[0][0].toFixed(1)} ${h - pad} Z`;
+  const areaPath = `${linePath} L${coords.at(-1)[0].toFixed(1)} ${padT + plotH} L${coords[0][0].toFixed(1)} ${padT + plotH} Z`;
   const up = closes.at(-1) >= closes[0];
   const stroke = up ? "var(--good, #11c270)" : "var(--danger, #ff4d4f)";
-  const first = points[0], last = points.at(-1);
-  const fmt = ts => new Date(ts).toLocaleDateString();
+
+  const fmtPrice = v => v >= 100 ? v.toFixed(0) : v.toFixed(2);
+  const fmtDate = ts => {
+    const d = new Date(ts);
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  };
+
+  // Y-axis: 4 horizontal grid lines + labels at evenly spaced price levels
+  const yTicks = 4;
+  let yAxis = "";
+  for (let i = 0; i <= yTicks; i++) {
+    const v = yMax - (i / yTicks) * yRange;
+    const y = padT + (i / yTicks) * plotH;
+    yAxis += `<line x1="${padL}" x2="${w - padR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="currentColor" stroke-opacity="0.08" stroke-width="1" />`;
+    yAxis += `<text x="${padL - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="10" fill="currentColor" fill-opacity="0.55">${fmtPrice(v)}</text>`;
+  }
+
+  // X-axis: up to 4 evenly spaced date ticks
+  const xTicks = Math.min(4, points.length - 1);
+  let xAxis = "";
+  for (let i = 0; i <= xTicks; i++) {
+    const idx = Math.round((i / xTicks) * (points.length - 1));
+    const x = xFor(idx);
+    xAxis += `<text x="${x.toFixed(1)}" y="${h - 4}" text-anchor="${i === 0 ? "start" : i === xTicks ? "end" : "middle"}" font-size="10" fill="currentColor" fill-opacity="0.55">${fmtDate(points[idx].t)}</text>`;
+  }
+
   let avgLine = "";
   let avgLabel = "";
-  if (avgCost != null) {
+  if (avgCost != null && avgCost >= yMin && avgCost <= yMax) {
     const y = yFor(avgCost).toFixed(1);
-    const above = avgCost > closes.at(-1);
-    avgLine = `<line x1="${pad}" x2="${w - pad}" y1="${y}" y2="${y}" stroke="var(--ink, #333)" stroke-width="1" stroke-dasharray="4 4" stroke-opacity="0.55" />`;
-    avgLabel = `<text x="${w - pad - 2}" y="${(Number(y) + (above ? -4 : 11)).toFixed(1)}" text-anchor="end" font-size="10" fill="var(--ink, #333)" fill-opacity="0.7">Avg ${avgCost.toFixed(2)}</text>`;
+    avgLine = `<line x1="${padL}" x2="${w - padR}" y1="${y}" y2="${y}" stroke="currentColor" stroke-width="1" stroke-dasharray="4 4" stroke-opacity="0.5" />`;
+    avgLabel = `<text x="${w - padR - 2}" y="${(Number(y) - 3).toFixed(1)}" text-anchor="end" font-size="10" fill="currentColor" fill-opacity="0.7">Avg ${fmtPrice(avgCost)}</text>`;
   }
+
   return `
-    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" class="holding-chart-svg" aria-label="Price history">
+    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet" class="holding-chart-svg" aria-label="Price history">
+      ${yAxis}
       <path d="${areaPath}" fill="${stroke}" fill-opacity="0.12" />
       <path d="${linePath}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
       ${avgLine}
       ${avgLabel}
-    </svg>
-    <div class="holding-chart-axis">
-      <span>${fmt(first.t)} · ${first.c.toFixed(2)}</span>
-      <span>${fmt(last.t)} · ${last.c.toFixed(2)}</span>
-    </div>`;
+      ${xAxis}
+    </svg>`;
 }
 
 document.querySelector("#holdingChartRanges").addEventListener("click", e => {
