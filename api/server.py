@@ -751,10 +751,10 @@ class Handler(BaseHTTPRequestHandler):
                     GROUP BY category
                 """)
                 rows = cur.fetchall()
-                inflow = sum(r['total'] for r in rows if r['total'] > 0)
-                outflow = abs(sum(r['total'] for r in rows if r['total'] < 0))
+                inflow = float(sum(r['total'] for r in rows if r['total'] > 0))
+                outflow = float(abs(sum(r['total'] for r in rows if r['total'] < 0)))
                 savings_rate = ((inflow - outflow) / inflow * 100) if inflow > 0 else 0
-                
+
                 cur.execute("SELECT COALESCE(SUM(balance), 0) value FROM accounts WHERE deleted_at IS NULL")
                 cash = float(cur.fetchone()["value"])
                 runway = round(cash / outflow, 1) if outflow > 0 else 999
@@ -822,10 +822,22 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(payload)
                 return
             if route == "/api/accounts":
-                cur.execute("INSERT INTO accounts (name, balance) VALUES (%s, %s)", (body["name"], float(body.get("balance", 0))))
+                acc_type = (body.get("type") or "cash").strip().lower()
+                if acc_type not in ("cash", "asset", "liability"):
+                    acc_type = "cash"
+                cur.execute(
+                    "INSERT INTO accounts (name, balance, type) VALUES (%s, %s, %s)",
+                    (body["name"], float(body.get("balance", 0)), acc_type),
+                )
                 return self.json({"ok": True}, 201)
             if route == "/api/transactions":
-                account = find_or_create_account(cur, body["account"])
+                if body.get("account_id"):
+                    cur.execute("SELECT * FROM accounts WHERE id = %s AND deleted_at IS NULL", (body["account_id"],))
+                    account = cur.fetchone()
+                    if not account:
+                        return self.json({"error": "Account not found"}, 404)
+                else:
+                    account = find_or_create_account(cur, body["account"])
                 amount = float(body["amount"])
                 cur.execute("UPDATE accounts SET balance = balance + %s WHERE id = %s", (amount, account["id"]))
                 cur.execute(
@@ -900,15 +912,24 @@ class Handler(BaseHTTPRequestHandler):
             
             with db_cursor() as cur:
                 if resource == 'accounts':
-                    cur.execute("UPDATE accounts SET name = %s, balance = %s WHERE id = %s", 
-                                (body['name'], float(body.get('balance', 0)), item_id))
+                    acc_type = (body.get("type") or "cash").strip().lower()
+                    if acc_type not in ("cash", "asset", "liability"):
+                        acc_type = "cash"
+                    cur.execute("UPDATE accounts SET name = %s, balance = %s, type = %s WHERE id = %s",
+                                (body['name'], float(body.get('balance', 0)), acc_type, item_id))
                     return self.json({"ok": True})
                 elif resource == 'holdings':
                     cur.execute("UPDATE holdings SET symbol = %s, quantity = %s, cost = %s, price = %s, currency = %s WHERE id = %s", 
                         (body['symbol'].upper(), float(body['quantity']), float(body['cost']), float(body['price']), clean_currency(body.get("currency")), item_id))
                     return self.json({"ok": True})
                 elif resource == 'transactions':
-                    account = find_or_create_account(cur, body["account"])
+                    if body.get("account_id"):
+                        cur.execute("SELECT * FROM accounts WHERE id = %s AND deleted_at IS NULL", (body["account_id"],))
+                        account = cur.fetchone()
+                        if not account:
+                            return self.json({"error": "Account not found"}, 404)
+                    else:
+                        account = find_or_create_account(cur, body["account"])
                     amount = float(body["amount"])
                     cur.execute("SELECT * FROM transactions WHERE id = %s", (item_id,))
                     old_tx = cur.fetchone()

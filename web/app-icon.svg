@@ -1,14 +1,29 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
   <rect width="1024" height="1024" rx="224" fill="#0F172A"/>
-  <circle cx="196" cy="192" r="360" fill="#34D399" fill-opacity="0.32"/>
-  <circle cx="828" cy="860" r="420" fill="#F59E0B" fill-opacity="0.22"/>
-  <path d="M258 658C322 544 394 474 474 448C556 420 636 438 766 328" stroke="white" stroke-width="72" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M258 658C322 544 394 474 474 448C556 420 636 438 766 328" stroke="#34D399" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="258" cy="658" r="54" fill="white"/>
-  <circle cx="474" cy="448" r="54" fill="white"/>
-  <circle cx="766" cy="328" r="54" fill="white"/>
-  <circle cx="258" cy="658" r="24" fill="#10B981"/>
-  <circle cx="474" cy="448" r="24" fill="#10B981"/>
-  <circle cx="766" cy="328" r="24" fill="#10B981"/>
-  <path d="M284 744H742" stroke="white" stroke-opacity="0.72" stroke-width="44" stroke-linecap="round"/>
+  <circle cx="196" cy="192" r="360" fill="#34D399" fill-opacity="0.22"/>
+  <circle cx="828" cy="860" r="420" fill="#F59E0B" fill-opacity="0.18"/>
+
+  <!-- Bottom coin (largest) -->
+  <ellipse cx="512" cy="780" rx="320" ry="60" fill="#B45309"/>
+  <ellipse cx="512" cy="760" rx="320" ry="74" fill="#F59E0B"/>
+  <ellipse cx="512" cy="754" rx="304" ry="60" fill="#FBBF24"/>
+
+  <!-- Middle coin -->
+  <ellipse cx="512" cy="612" rx="260" ry="54" fill="#B45309"/>
+  <ellipse cx="512" cy="594" rx="260" ry="68" fill="#F59E0B"/>
+  <ellipse cx="512" cy="588" rx="246" ry="54" fill="#FBBF24"/>
+
+  <!-- Top coin (smallest, holds the €) -->
+  <ellipse cx="512" cy="450" rx="200" ry="46" fill="#B45309"/>
+  <ellipse cx="512" cy="434" rx="200" ry="58" fill="#F59E0B"/>
+  <ellipse cx="512" cy="428" rx="188" ry="46" fill="#FBBF24"/>
+
+  <!-- € symbol centered on top coin face -->
+  <text x="512" y="468" font-family="-apple-system, SF Pro Display, Helvetica, Arial, sans-serif"
+        font-size="120" font-weight="700" fill="#0F172A" text-anchor="middle">€</text>
+
+  <!-- Subtle highlight on top of each coin -->
+  <ellipse cx="450" cy="412" rx="80" ry="10" fill="#FEF3C7" fill-opacity="0.55"/>
+  <ellipse cx="430" cy="574" rx="100" ry="12" fill="#FEF3C7" fill-opacity="0.35"/>
+  <ellipse cx="410" cy="740" rx="120" ry="14" fill="#FEF3C7" fill-opacity="0.22"/>
 </svg>

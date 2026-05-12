@@ -32,8 +32,14 @@ const els = {
   toastContainer: document.querySelector("#toastContainer"),
   netWorth: document.querySelector("#netWorth"),
   netWorthDelta: document.querySelector("#netWorthDelta"),
+  allocationBar: document.querySelector("#allocationBar"),
+  allocationLegend: document.querySelector("#allocationLegend"),
   cashTotal: document.querySelector("#cashTotal"),
   portfolioTotal: document.querySelector("#portfolioTotal"),
+  assetsTotal: document.querySelector("#assetsTotal"),
+  assetsTile: document.querySelector("#assetsTile"),
+  debtTotal: document.querySelector("#debtTotal"),
+  debtTile: document.querySelector("#debtTile"),
   portfolioLiveValue: document.querySelector("#portfolioLiveValue"),
   portfolioLivePnl: document.querySelector("#portfolioLivePnl"),
   portfolioKpis: document.querySelector("#portfolioKpis"),
@@ -51,6 +57,11 @@ const els = {
   analysisChart: document.querySelector("#analysisChart"),
   monthlyInflow: document.querySelector("#monthlyInflow"),
   monthlyOutflow: document.querySelector("#monthlyOutflow"),
+  totalAssetsCard: document.querySelector("#totalAssetsCard"),
+  totalDebtCard: document.querySelector("#totalDebtCard"),
+  propertyEquityCard: document.querySelector("#propertyEquityCard"),
+  principalPaidCard: document.querySelector("#principalPaidCard"),
+  savingsMixCard: document.querySelector("#savingsMixCard"),
   savingsRate: document.querySelector("#savingsRate"),
   runwayMonths: document.querySelector("#runwayMonths"),
   portfolioProfit: document.querySelector("#portfolioProfit"),
@@ -150,7 +161,7 @@ async function loadServerState() {
     api("/api/portfolio").catch(() => ({ cash: 0, events: [] })),
     api("/api/fx").catch(() => ({ rates: seedState.fxRates }))
   ]);
-  state.accounts = accounts.map(a => ({ id: a.id, name: a.name, balance: Number(a.balance || 0), createdAt: a.created_at }));
+  state.accounts = accounts.map(a => ({ id: a.id, name: a.name, balance: Number(a.balance || 0), type: a.type || "cash", createdAt: a.created_at }));
   state.transactions = transactions.map(tx => ({
     id: tx.id, accountId: tx.account_id, accountName: tx.account_name,
     amount: Number(tx.amount || 0), category: tx.category, note: tx.note, createdAt: tx.created_at
@@ -185,7 +196,19 @@ function compactMoney(value) {
   }).format(value || 0);
 }
 
-function totalCash() { return state.accounts.reduce((sum, acc) => sum + acc.balance, 0); }
+function accountsOfType(type) { return state.accounts.filter(a => (a.type || "cash") === type); }
+function totalCash() { return accountsOfType("cash").reduce((sum, acc) => sum + acc.balance, 0); }
+function totalAssets() { return accountsOfType("asset").reduce((sum, acc) => sum + acc.balance, 0); }
+function totalLiabilities() { return accountsOfType("liability").reduce((sum, acc) => sum + acc.balance, 0); }
+
+const PERSPECTIVE_LABEL = { net: "Net worth", gross: "Gross assets", liquid: "Liquid wealth" };
+let currentPerspective = "net";
+function worthForPerspective(perspective) {
+  const cash = totalCash(), assets = totalAssets(), portfolio = portfolioValue();
+  if (perspective === "gross") return cash + assets + portfolio;
+  if (perspective === "liquid") return cash + portfolio;
+  return cash + assets + portfolio - totalLiabilities();
+}
 function cleanCurrency(value) {
   const currency = String(value || "EUR").toUpperCase();
   return currency === "USD" ? "USD" : "EUR";
@@ -237,7 +260,7 @@ function portfolioValue() { return portfolioAssetValue() + Math.max(state.portfo
 function portfolioCost() { return state.holdings.reduce((sum, h) => sum + holdingCostEur(h), 0); }
 function portfolioPnl() { return portfolioAssetValue() - portfolioCost(); }
 function portfolioPnlPercent() { const cost = portfolioCost(); return cost ? (portfolioPnl() / cost) * 100 : 0; }
-function netWorth() { return totalCash() + portfolioValue(); }
+function netWorth() { return worthForPerspective(currentPerspective); }
 
 function snapshot() {
   const value = netWorth();
@@ -251,11 +274,22 @@ function snapshot() {
 function render() {
   snapshot();
   saveState();
-  const cash = totalCash(), portfolio = portfolioValue(), worth = cash + portfolio;
+  const cash = totalCash(), portfolio = portfolioValue();
+  const assets = totalAssets(), liabilities = totalLiabilities();
+  const worth = worthForPerspective(currentPerspective);
 
+  document.querySelector("#perspectiveLabel").textContent = PERSPECTIVE_LABEL[currentPerspective];
   els.netWorth.textContent = money(worth);
   els.cashTotal.textContent = money(cash);
   els.portfolioTotal.textContent = money(portfolio);
+  if (els.assetsTotal) {
+    els.assetsTotal.textContent = money(assets);
+    els.assetsTile.hidden = assets === 0;
+  }
+  if (els.debtTotal) {
+    els.debtTotal.textContent = `-${money(liabilities)}`;
+    els.debtTile.hidden = liabilities === 0;
+  }
 
   renderPortfolioSummary();
   renderAccounts();
@@ -269,6 +303,48 @@ function render() {
   els.evolutionLabel.textContent = trendText;
   renderLineChart(els.chart, 200, trendPoints);
   renderLineChart(els.analysisChart, 160, trendPoints);
+  renderHeroDelta(trendPoints);
+  renderAllocationBar(cash, assets, portfolio);
+}
+
+function renderHeroDelta(trendPoints) {
+  if (!trendPoints || trendPoints.length < 2) {
+    els.netWorthDelta.hidden = true;
+    return;
+  }
+  const startVal = trendPoints[0].value;
+  const endVal = trendPoints.at(-1).value;
+  const delta = endVal - startVal;
+  const pct = startVal ? (delta / Math.abs(startVal)) * 100 : 0;
+  const sign = delta > 0 ? "+" : "";
+  els.netWorthDelta.hidden = false;
+  els.netWorthDelta.textContent = `${sign}${money(delta)} (${sign}${pct.toFixed(1)}%) · ${chartRanges.netWorth}`;
+  els.netWorthDelta.className = delta >= 0 ? "positive" : "negative";
+}
+
+function renderAllocationBar(cash, assets, portfolio) {
+  if (currentPerspective === "liquid") assets = 0;
+  const total = cash + assets + portfolio;
+  if (total <= 0) {
+    els.allocationBar.hidden = true;
+    return;
+  }
+  els.allocationBar.hidden = false;
+  const segments = [
+    { kind: "cash", label: "Cash", value: cash },
+    { kind: "property", label: "Property", value: assets },
+    { kind: "portfolio", label: "Portfolio", value: portfolio },
+  ];
+  els.allocationBar.querySelectorAll(".allocation-segment").forEach(seg => {
+    const item = segments.find(s => s.kind === seg.dataset.kind);
+    const pct = item ? (item.value / total) * 100 : 0;
+    seg.style.width = `${pct}%`;
+    seg.hidden = pct === 0;
+  });
+  els.allocationLegend.innerHTML = segments
+    .filter(s => s.value > 0)
+    .map(s => `<span class="allocation-tag" data-kind="${s.kind}"><i></i>${s.label} ${Math.round((s.value / total) * 100)}%</span>`)
+    .join("");
 }
 
 function renderPortfolioSummary() {
@@ -506,21 +582,43 @@ function renderAccounts() {
     els.accountList.innerHTML = `<div class="empty-state"><svg><use href="#icon-wallet"></use></svg><h3>No Accounts</h3><p>Add one to start.</p></div>`;
     return;
   }
-  els.accountList.innerHTML = state.accounts.map((acc, index) => {
+  let colorIndex = 0;
+  const renderCard = (acc) => {
     const count = state.transactions.filter(tx => tx.accountId === acc.id).length;
-    const [accent, accentSoft] = ACCOUNT_COLORS[index % ACCOUNT_COLORS.length];
+    const [accent, accentSoft] = ACCOUNT_COLORS[colorIndex++ % ACCOUNT_COLORS.length];
+    const type = acc.type || "cash";
+    const valueClass = type === "liability" ? "negative" : "";
+    const displayBalance = type === "liability" ? `-${money(acc.balance)}` : money(acc.balance);
     return `
       <article class="account-card" data-id="${acc.id}" style="--card-accent:${accent}; --card-accent-soft:${accentSoft};">
         <div class="account-top">
           <strong>${escapeHtml(acc.name)}</strong>
           <div class="card-value-actions">
-            <strong>${money(acc.balance)}</strong>
+            <strong class="${valueClass}">${displayBalance}</strong>
             <button class="action-btn edit-account" data-id="${acc.id}" title="Edit account" aria-label="Edit ${escapeHtml(acc.name)}">✎</button>
           </div>
         </div>
         <small>${count} transaction${count === 1 ? "" : "s"}</small>
       </article>`;
-  }).join("");
+  };
+  const section = (title, accounts, total, totalClass = "") => {
+    if (!accounts.length) return "";
+    return `
+      <div class="account-section">
+        <div class="account-section-head">
+          <h3>${title}</h3>
+          <strong class="${totalClass}">${total}</strong>
+        </div>
+        ${accounts.map(renderCard).join("")}
+      </div>`;
+  };
+  const cash = accountsOfType("cash");
+  const assets = accountsOfType("asset");
+  const liabilities = accountsOfType("liability");
+  els.accountList.innerHTML =
+    section("Cash", cash, money(totalCash())) +
+    section("Assets", assets, money(totalAssets())) +
+    section("Liabilities", liabilities, `-${money(totalLiabilities())}`, "negative");
   bindCardActions(els.accountList, openAccountDetail, openEditAccount);
 }
 
@@ -577,28 +675,48 @@ function renderActivity() {
 }
 
 function renderBars() {
-  const cash = Math.max(Math.abs(totalCash()), 1);
+  const accountMax = Math.max(
+    ...state.accounts.map(a => Math.abs(a.balance)),
+    1,
+  );
   els.accountSplitLabel.textContent = `${state.accounts.length} account${state.accounts.length === 1 ? "" : "s"}`;
   els.accountBars.innerHTML = state.accounts.length
-    ? state.accounts.map(acc => barRow(acc.name, money(acc.balance), Math.abs(acc.balance) / cash)).join("")
+    ? state.accounts.map(acc => {
+        const type = acc.type || "cash";
+        const display = type === "liability" ? `-${money(acc.balance)}` : money(acc.balance);
+        const label = type === "cash" ? acc.name : `${acc.name} · ${type}`;
+        return barRow(label, display, Math.abs(acc.balance) / accountMax);
+      }).join("")
     : `<p class="muted">No balances yet.</p>`;
 
   const month = new Date().toISOString().slice(0, 7);
-  const categories = state.transactions.filter(tx => tx.createdAt.startsWith(month) && tx.amount < 0).reduce((map, tx) => {
-    map[tx.category] = (map[tx.category] || 0) + Math.abs(tx.amount);
-    return map;
-  }, {});
+  const categories = state.transactions
+    .filter(tx => tx.createdAt.startsWith(month) && tx.amount < 0 && !NON_CASHFLOW_CATEGORIES.has(tx.category))
+    .reduce((map, tx) => {
+      map[tx.category] = (map[tx.category] || 0) + Math.abs(tx.amount);
+      return map;
+    }, {});
   const max = Math.max(...Object.values(categories), 1);
   els.categoryBars.innerHTML = Object.keys(categories).length
     ? Object.entries(categories).sort((a, b) => b[1] - a[1]).map(([name, val]) => barRow(name, money(val), val / max)).join("")
     : `<p class="muted">No outflows yet.</p>`;
 }
 
+const NON_CASHFLOW_CATEGORIES = new Set(["transfer", "revalue", "mortgage-principal"]);
+
 function renderInsights() {
   const month = new Date().toISOString().slice(0, 7);
   const monthlyTx = state.transactions.filter(tx => tx.createdAt.startsWith(month));
-  const inflow = monthlyTx.filter(tx => tx.amount > 0).reduce((sum, tx) => sum + tx.amount, 0);
-  const outflow = monthlyTx.filter(tx => tx.amount < 0).reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+  const cashflowTx = monthlyTx.filter(tx => !NON_CASHFLOW_CATEGORIES.has(tx.category));
+  const inflow = cashflowTx.filter(tx => tx.amount > 0).reduce((sum, tx) => sum + tx.amount, 0);
+  const outflow = cashflowTx.filter(tx => tx.amount < 0).reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+  const principalPaid = monthlyTx
+    .filter(tx => tx.category === "mortgage-principal")
+    .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+  const assetsTotal = totalAssets();
+  const liabilitiesTotal = totalLiabilities();
+  const assetsAll = totalCash() + assetsTotal + portfolioValue();
+  const propertyEquity = assetsTotal - liabilitiesTotal;
   const saved = inflow - outflow;
   const savingsRate = inflow > 0 ? Math.round((saved / inflow) * 100) : 0;
   const runway = outflow > 0 ? totalCash() / outflow : null;
@@ -624,13 +742,37 @@ function renderInsights() {
   els.worthMove.textContent = worthMove === 0 ? "Flat" : `${worthMove > 0 ? "+" : ""}${money(worthMove)}`;
   els.worthMove.className = worthMove >= 0 ? "positive" : "negative";
 
+  els.totalAssetsCard.textContent = money(assetsAll);
+  els.totalDebtCard.textContent = liabilitiesTotal > 0 ? `-${money(liabilitiesTotal)}` : money(0);
+  els.totalDebtCard.className = liabilitiesTotal > 0 ? "negative" : "";
+  els.propertyEquityCard.textContent = assetsTotal > 0 ? money(propertyEquity) : "--";
+  els.propertyEquityCard.className = propertyEquity >= 0 ? "positive" : "negative";
+  els.principalPaidCard.textContent = principalPaid > 0 ? money(principalPaid) : money(0);
+  els.principalPaidCard.className = principalPaid > 0 ? "positive" : "";
+
+  const cashSaved = Math.max(inflow - outflow, 0);
+  const totalSaved = cashSaved + principalPaid;
+  if (totalSaved > 0) {
+    const loanPct = Math.round((principalPaid / totalSaved) * 100);
+    els.savingsMixCard.textContent = `${loanPct}% loan · ${100 - loanPct}% cash`;
+    els.savingsMixCard.className = "";
+  } else {
+    els.savingsMixCard.textContent = "--";
+    els.savingsMixCard.className = "muted";
+  }
+
   const signals = [];
   if (inflow || outflow) signals.push({ type: "Flow", title: savingsRate >= 0 ? `${savingsRate}% saved` : "Outflow heavy", detail: `${money(inflow)} in · ${money(outflow)} out` });
   signals.push({ type: "Mix", title: netWorth() > 0 ? `${investedShare}% invested` : "Waiting", detail: `${money(portfolioValue())} portfolio` });
   if (topHolding) signals.push({ type: "Exposure", title: topHolding.symbol, detail: `${Math.round((topHolding.value / Math.max(portfolioAssetValue(), 1)) * 100)}% of assets` });
   if (state.portfolioCash > 0) signals.push({ type: "Cash", title: money(state.portfolioCash), detail: "available in portfolio" });
   if (worthMove !== 0) signals.push({ type: "Move", title: `${worthMove > 0 ? "+" : ""}${money(worthMove)}`, detail: "since last snapshot" });
-  
+  if (liabilitiesTotal > 0) {
+    const debtRatio = assetsAll > 0 ? Math.round((liabilitiesTotal / assetsAll) * 100) : 100;
+    signals.push({ type: "Debt", title: `${debtRatio}% leverage`, detail: `${money(liabilitiesTotal)} owed on ${money(assetsAll)}` });
+  }
+  if (principalPaid > 0) signals.push({ type: "Equity", title: `+${money(principalPaid)}`, detail: "principal paid this month" });
+
   els.signalCount.textContent = `${signals.length} active`;
   els.signalList.innerHTML = signals.map(s => `
     <article class="signal-card">
@@ -673,14 +815,22 @@ function renderChat() {
   els.chatLog.scrollTop = els.chatLog.scrollHeight;
 }
 
-function buildNetWorthTrend() {
-  const currentWorth = netWorth();
+function buildNetWorthTrend(perspective = currentPerspective) {
+  const currentWorth = worthForPerspective(perspective);
+  const accountTypeById = new Map(state.accounts.map(a => [a.id, a.type || "cash"]));
+  const contribOf = (tx) => {
+    const type = accountTypeById.get(tx.accountId) || "cash";
+    const amt = Number(tx.amount || 0);
+    if (perspective === "gross") return type === "liability" ? 0 : amt;
+    if (perspective === "liquid") return type === "cash" ? amt : 0;
+    return type === "liability" ? -amt : amt;
+  };
   const today = new Date().toISOString().slice(0, 10);
   const pointsByDate = new Map([[today, currentWorth]]);
   const transactionTotalsByDate = state.transactions.reduce((map, tx) => {
     const date = dateKey(tx.createdAt);
     if (!date || date > today) return map;
-    map.set(date, (map.get(date) || 0) + Number(tx.amount || 0));
+    map.set(date, (map.get(date) || 0) + contribOf(tx));
     return map;
   }, new Map());
 
@@ -862,6 +1012,22 @@ document.querySelector("#chatForm").addEventListener("submit", async (e) => {
 });
 
 // ----------------------------------------
+// Overlay stack — wires iOS swipe-back / Android back to close topmost overlay
+// ----------------------------------------
+const overlayStack = [];
+function pushOverlay(closeUI) {
+  overlayStack.push(closeUI);
+  history.pushState({ overlay: overlayStack.length }, "");
+}
+function dismissTopOverlay() {
+  if (overlayStack.length) history.back();
+}
+window.addEventListener("popstate", () => {
+  const closeUI = overlayStack.pop();
+  if (closeUI) closeUI();
+});
+
+// ----------------------------------------
 // Modals & Editing
 // ----------------------------------------
 let currentModalAction = null;
@@ -875,9 +1041,10 @@ function openModal(title, fieldsHtml, onSave, onDelete, options = {}) {
   els.modalSaveBtn.textContent = options.saveLabel || "Save Changes";
   currentModalAction = { onSave, onDelete };
   els.modalBackdrop.classList.add("active");
+  pushOverlay(closeModalUI);
 }
 
-function closeModal() {
+function closeModalUI() {
   els.modalBackdrop.classList.remove("active");
   currentModalAction = null;
   els.modalHeaderAccessory.innerHTML = "";
@@ -885,6 +1052,8 @@ function closeModal() {
   els.modalSaveBtn.textContent = "Save Changes";
   els.genericForm.reset();
 }
+
+function closeModal() { dismissTopOverlay(); }
 
 els.modalBackdrop.addEventListener("click", e => { if (e.target === els.modalBackdrop) closeModal(); });
 document.querySelector("#modalCloseBtn").addEventListener("click", closeModal);
@@ -915,10 +1084,19 @@ function openEditAccount(id) {
   const acc = state.accounts.find(a => a.id === id);
   if (!acc) return;
   openModal("Edit Account", `
-    <input name="name" value="${escapeHtml(acc.name)}" placeholder="Name" required />
-    <input name="balance" type="number" inputmode="decimal" step="0.01" value="${acc.balance}" placeholder="Balance" required />
+    <label class="tx-field"><span>Name</span>
+      <input name="name" value="${escapeHtml(acc.name)}" required />
+    </label>
+    <label class="tx-field"><span>Type</span>
+      <select name="type">${accountTypeOptions(acc.type || "cash")}</select>
+    </label>
+    <label class="tx-field"><span>Balance</span>
+      <input name="balance" type="number" inputmode="decimal" step="0.01" value="${acc.balance}" required />
+    </label>
   `, async fd => {
-    await api(`/api/accounts/${id}`, { method: "PUT", body: JSON.stringify({ name: fd.get("name"), balance: fd.get("balance") }) });
+    await api(`/api/accounts/${id}`, { method: "PUT", body: JSON.stringify({
+      name: fd.get("name"), balance: fd.get("balance"), type: fd.get("type"),
+    }) });
     await loadServerState(); showToast("Account updated");
   }, async () => {
     await api(`/api/accounts/${id}`, { method: "DELETE" });
@@ -948,10 +1126,18 @@ function openEditTx(id) {
   const tx = state.transactions.find(t => t.id === id);
   if (!tx) return;
   openModal("Edit Transaction", `
-    <input name="account" value="${escapeHtml(tx.accountName)}" required />
-    <input name="amount" type="number" inputmode="decimal" step="0.01" value="${tx.amount}" required />
-    <input name="category" value="${escapeHtml(tx.category)}" required />
-    <input name="note" value="${escapeHtml(tx.note)}" required />
+    <label class="tx-field"><span>Account</span>
+      <select name="account_id" required>${accountOptions(tx.accountId)}</select>
+    </label>
+    <label class="tx-field"><span>Amount</span>
+      <input name="amount" type="number" inputmode="decimal" step="0.01" value="${tx.amount}" required />
+    </label>
+    <label class="tx-field"><span>Category</span>
+      <input name="category" value="${escapeHtml(tx.category)}" required />
+    </label>
+    <label class="tx-field"><span>Note</span>
+      <input name="note" value="${escapeHtml(tx.note)}" />
+    </label>
   `, async fd => {
     await api(`/api/transactions/${id}`, { method: "PUT", body: JSON.stringify(Object.fromEntries(fd)) });
     await loadServerState(); showToast("Transaction updated");
@@ -1022,6 +1208,7 @@ function openAccountDetail(id) {
     </div>
   `).join("") : `<p class="muted">No transactions found.</p>`;
   els.accountDetailView.classList.add("active");
+  pushOverlay(() => els.accountDetailView.classList.remove("active"));
 }
 
 function setSignedMetric(el, signedText, isPositive) {
@@ -1067,6 +1254,7 @@ function openHoldingDetail(id) {
   els.holdingDetailView.dataset.id = id;
   els.holdingDetailView.classList.add("active");
   loadHoldingChart(h, currentChartRange);
+  pushOverlay(() => els.holdingDetailView.classList.remove("active"));
 }
 
 let currentChartRange = "1mo";
@@ -1135,18 +1323,46 @@ document.querySelector("#holdingChartRanges").addEventListener("click", e => {
   if (h) loadHoldingChart(h, currentChartRange);
 });
 
-document.querySelector("#closeAccountDetail").addEventListener("click", () => els.accountDetailView.classList.remove("active"));
-document.querySelector("#closeHoldingDetail").addEventListener("click", () => els.holdingDetailView.classList.remove("active"));
+document.querySelector("#closeAccountDetail").addEventListener("click", dismissTopOverlay);
+document.querySelector("#closeHoldingDetail").addEventListener("click", dismissTopOverlay);
 
 // Original Add Forms
-document.querySelector("#addAccountButton").addEventListener("click", () => {
+const ACCOUNT_TYPES = [
+  { value: "cash", label: "Cash (bank, wallet)" },
+  { value: "asset", label: "Asset (house, car)" },
+  { value: "liability", label: "Liability (mortgage, loan)" },
+];
+
+function accountTypeOptions(selected) {
+  return ACCOUNT_TYPES
+    .map(t => `<option value="${t.value}"${t.value === selected ? " selected" : ""}>${t.label}</option>`)
+    .join("");
+}
+
+function openNewAccountModal() {
   openModal("New Account", `
-    <input name="name" placeholder="Account name" required />
-    <input name="balance" type="number" inputmode="decimal" step="0.01" placeholder="Opening balance" required />
+    <label class="tx-field"><span>Name</span>
+      <input name="name" placeholder="Account name" required />
+    </label>
+    <label class="tx-field"><span>Type</span>
+      <select name="type">${accountTypeOptions("cash")}</select>
+    </label>
+    <label class="tx-field"><span>Opening balance</span>
+      <input name="balance" type="number" inputmode="decimal" step="0.01" placeholder="0.00" required />
+    </label>
+    <small class="muted">For liabilities, enter the amount owed as a positive number.</small>
   `, async fd => {
-    await api("/api/accounts", { method: "POST", body: JSON.stringify({ name: fd.get("name"), balance: fd.get("balance") }) });
+    await api("/api/accounts", { method: "POST", body: JSON.stringify({
+      name: fd.get("name"), balance: fd.get("balance"), type: fd.get("type"),
+    }) });
     await loadServerState(); showToast("Account created");
   });
+}
+
+document.querySelector("#addAccountButton").addEventListener("click", openManualTxModal);
+document.querySelector("#settingsAddAccountBtn").addEventListener("click", () => {
+  document.querySelector("#settingsBackdrop").classList.remove("active");
+  openNewAccountModal();
 });
 
 function togglePortfolioActionMenu() {
@@ -1251,17 +1467,174 @@ document.addEventListener("click", (event) => {
   }
 });
 
-document.querySelector("#addTxBtn").addEventListener("click", () => {
-  openModal("Manual Transaction", `
-    <input name="account" placeholder="Account Name" required />
-    <input name="amount" type="number" inputmode="decimal" step="0.01" placeholder="Amount (negative for outflow)" required />
-    <input name="category" placeholder="Category" required />
-    <input name="note" placeholder="Note" required />
+document.querySelector("#addTxBtn").addEventListener("click", openManualTxModal);
+
+function accountOptions(selectedId, filterType) {
+  return state.accounts
+    .filter(a => !filterType || (a.type || "cash") === filterType)
+    .map(a => `<option value="${a.id}"${a.id === selectedId ? " selected" : ""}>${escapeHtml(a.name)}</option>`)
+    .join("");
+}
+
+const TX_TYPE_LABELS = {
+  expense: "Expense",
+  income: "Income",
+  transfer: "Transfer",
+  payment: "Payment",
+  revalue: "Revalue",
+};
+
+function txTypesForAccount(accType) {
+  if (accType === "asset") return ["revalue"];
+  if (accType === "liability") return ["payment"];
+  return ["expense", "income", "transfer"];
+}
+
+function openManualTxModal() {
+  if (!state.accounts.length) return showToast("Add an account first in Settings", "error");
+  const accountOptionsGrouped = () => {
+    const group = (label, type) => {
+      const items = accountsOfType(type);
+      if (!items.length) return "";
+      const opts = items.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join("");
+      return `<optgroup label="${label}">${opts}</optgroup>`;
+    };
+    return group("Cash", "cash") + group("Assets", "asset") + group("Liabilities", "liability");
+  };
+
+  openModal("New Transaction", `
+    <label class="tx-field"><span>Account</span>
+      <select name="account" required>${accountOptionsGrouped()}</select>
+    </label>
+    <div class="tx-type-tabs" role="tablist" aria-label="Transaction type"></div>
+    <input type="hidden" name="type" value="" />
+    <label class="tx-field tx-to-field hidden"><span>Destination</span>
+      <select name="toAccount">${accountOptions(null, "cash")}</select>
+    </label>
+    <label class="tx-field tx-amount-field"><span>Amount</span>
+      <input name="amount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" required />
+    </label>
+    <label class="tx-field tx-interest-field hidden"><span>Interest portion</span>
+      <input name="interest" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" />
+    </label>
+    <label class="tx-field tx-newvalue-field hidden"><span>New value</span>
+      <input name="newValue" type="number" inputmode="decimal" step="0.01" placeholder="0.00" />
+    </label>
+    <label class="tx-field tx-category-field"><span>Category</span>
+      <input name="category" placeholder="Category" required />
+    </label>
+    <label class="tx-field tx-note-field"><span>Note</span>
+      <input name="note" placeholder="Note" />
+    </label>
   `, async fd => {
-    await api("/api/transactions", { method: "POST", body: JSON.stringify(Object.fromEntries(fd)) });
+    const type = fd.get("type");
+    const accountId = fd.get("account");
+    const note = fd.get("note") || "";
+    const acc = state.accounts.find(a => a.id === accountId);
+    if (!acc) throw new Error("Pick an account");
+
+    if (type === "revalue") {
+      const newValue = Number(fd.get("newValue"));
+      if (!Number.isFinite(newValue)) throw new Error("Enter the new value");
+      const delta = newValue - acc.balance;
+      if (delta === 0) throw new Error("New value matches current balance");
+      await api("/api/transactions", { method: "POST", body: JSON.stringify({
+        account_id: acc.id, amount: delta, category: "revalue",
+        note: note || `Revalue to ${money(newValue)}`,
+      }) });
+      await loadServerState(); showToast("Revalued");
+      return;
+    }
+
+    const amount = Math.abs(Number(fd.get("amount") || 0));
+    if (!amount) throw new Error("Amount must be greater than zero");
+
+    if (type === "payment") {
+      const interest = Math.abs(Number(fd.get("interest") || 0));
+      if (interest > amount) throw new Error("Interest cannot exceed total payment");
+      const principal = amount - interest;
+      if (principal <= 0) throw new Error("Principal portion must be greater than zero");
+      const payNote = note || `EMI ${money(amount)} (${money(principal)} principal, ${money(interest)} interest)`;
+      await api("/api/transactions", { method: "POST", body: JSON.stringify({
+        account_id: acc.id, amount: -principal, category: "mortgage-principal", note: payNote,
+      }) });
+      await loadServerState(); showToast("Payment saved");
+      return;
+    }
+
+    if (type === "transfer") {
+      const toAccountId = fd.get("toAccount");
+      if (!toAccountId || toAccountId === acc.id) throw new Error("Pick a different destination account");
+      const toAcc = state.accounts.find(a => a.id === toAccountId);
+      const transferNote = note || `transfer ${acc.name}→${toAcc?.name || ""}`;
+      await api("/api/transactions", { method: "POST", body: JSON.stringify({
+        account_id: acc.id, amount: -amount, category: "transfer", note: transferNote,
+      }) });
+      await api("/api/transactions", { method: "POST", body: JSON.stringify({
+        account_id: toAccountId, amount: amount, category: "transfer", note: transferNote,
+      }) });
+      await loadServerState(); showToast("Transfer saved");
+      return;
+    }
+
+    const signed = type === "income" ? amount : -amount;
+    const category = fd.get("category") || (type === "income" ? "income" : "expense");
+    await api("/api/transactions", { method: "POST", body: JSON.stringify({
+      account_id: acc.id, amount: signed, category, note,
+    }) });
     await loadServerState(); showToast("Transaction saved");
   });
-});
+
+  const form = els.genericForm;
+  const accountSelect = form.querySelector('select[name="account"]');
+  const tabsEl = form.querySelector(".tx-type-tabs");
+  const typeInput = form.querySelector('input[name="type"]');
+  const toField = form.querySelector(".tx-to-field");
+  const toSelect = toField.querySelector("select");
+  const amountField = form.querySelector(".tx-amount-field");
+  const amountInput = amountField.querySelector("input");
+  const interestField = form.querySelector(".tx-interest-field");
+  const newValueField = form.querySelector(".tx-newvalue-field");
+  const newValueInput = newValueField.querySelector("input");
+  const catField = form.querySelector(".tx-category-field");
+  const catInput = catField.querySelector("input");
+
+  function applyType(type) {
+    typeInput.value = type;
+    tabsEl.querySelectorAll("button").forEach(b => b.classList.toggle("active", b.dataset.txType === type));
+    const isTransfer = type === "transfer";
+    const isPayment = type === "payment";
+    const isRevalue = type === "revalue";
+    toField.classList.toggle("hidden", !isTransfer);
+    toSelect.required = isTransfer;
+    interestField.classList.toggle("hidden", !isPayment);
+    amountField.classList.toggle("hidden", isRevalue);
+    amountInput.required = !isRevalue;
+    newValueField.classList.toggle("hidden", !isRevalue);
+    newValueInput.required = isRevalue;
+    catField.classList.toggle("hidden", isTransfer || isPayment || isRevalue);
+    catInput.required = !isTransfer && !isPayment && !isRevalue;
+  }
+
+  function refreshForAccount() {
+    const accId = accountSelect.value;
+    const acc = state.accounts.find(a => a.id === accId);
+    const accType = acc?.type || "cash";
+    const types = txTypesForAccount(accType);
+    tabsEl.innerHTML = types
+      .map((t, i) => `<button type="button" data-tx-type="${t}"${i === 0 ? ' class="active"' : ""}>${TX_TYPE_LABELS[t]}</button>`)
+      .join("");
+    if (acc) newValueInput.placeholder = String(acc.balance);
+    applyType(types[0]);
+  }
+
+  tabsEl.addEventListener("click", e => {
+    const btn = e.target.closest("[data-tx-type]");
+    if (btn) applyType(btn.dataset.txType);
+  });
+  accountSelect.addEventListener("change", refreshForAccount);
+  refreshForAccount();
+}
 
 document.querySelector("#refreshPricesButton").addEventListener("click", async () => {
   if (!state.holdings.length) return showToast("Add holdings first", "error");
@@ -1338,6 +1711,14 @@ document.querySelectorAll("[data-tab]").forEach(btn => {
   });
 });
 
+document.querySelector("#perspectiveTabs").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-perspective]");
+  if (!btn) return;
+  currentPerspective = btn.dataset.perspective;
+  document.querySelectorAll("#perspectiveTabs button").forEach(b => b.classList.toggle("active", b === btn));
+  render();
+});
+
 document.querySelectorAll("[data-chart-range] button").forEach(btn => {
   btn.addEventListener("click", () => {
     const group = btn.closest("[data-chart-range]");
@@ -1359,8 +1740,11 @@ document.querySelectorAll("[data-holding-sort] button").forEach(btn => {
 window.addEventListener('resize', () => { setTimeout(render, 10); });
 
 const settingsBackdrop = document.querySelector("#settingsBackdrop");
-function openSettings() { settingsBackdrop.classList.add("active"); }
-function closeSettings() { settingsBackdrop.classList.remove("active"); }
+function openSettings() {
+  settingsBackdrop.classList.add("active");
+  pushOverlay(() => settingsBackdrop.classList.remove("active"));
+}
+function closeSettings() { dismissTopOverlay(); }
 document.querySelector("#settingsBtn").addEventListener("click", openSettings);
 document.querySelector("#settingsCloseBtn").addEventListener("click", closeSettings);
 settingsBackdrop.addEventListener("click", e => { if (e.target === settingsBackdrop) closeSettings(); });

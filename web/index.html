@@ -57,11 +57,24 @@
           </header>
           <div class="metric-grid">
             <article class="metric primary net-worth-card">
-              <div class="net-worth-main">
-                <span>Net worth</span>
-                <strong id="netWorth">EUR 0</strong>
+              <div class="perspective-tabs" id="perspectiveTabs" role="tablist" aria-label="Wealth perspective">
+                <button type="button" data-perspective="net" class="active">Net</button>
+                <button type="button" data-perspective="gross">Gross</button>
+                <button type="button" data-perspective="liquid">Liquid</button>
               </div>
-              <small id="netWorthDelta" hidden></small>
+              <div class="net-worth-main">
+                <span id="perspectiveLabel">Net worth</span>
+                <strong id="netWorth">EUR 0</strong>
+                <small id="netWorthDelta" hidden></small>
+              </div>
+              <div class="allocation-bar" id="allocationBar" hidden>
+                <div class="allocation-track">
+                  <span class="allocation-segment" data-kind="cash"></span>
+                  <span class="allocation-segment" data-kind="property"></span>
+                  <span class="allocation-segment" data-kind="portfolio"></span>
+                </div>
+                <div class="allocation-legend" id="allocationLegend"></div>
+              </div>
               <div class="net-worth-breakdown">
                 <button type="button" class="net-worth-tile" data-tab="accountsView" aria-label="Open accounts">
                   <span>Cash</span>
@@ -70,6 +83,14 @@
                 <button type="button" class="net-worth-tile" data-tab="portfolioView" aria-label="Open portfolio">
                   <span>Portfolio</span>
                   <strong id="portfolioTotal">EUR 0</strong>
+                </button>
+                <button type="button" class="net-worth-tile" id="assetsTile" data-tab="accountsView" aria-label="Open assets" hidden>
+                  <span>Property</span>
+                  <strong id="assetsTotal">EUR 0</strong>
+                </button>
+                <button type="button" class="net-worth-tile" id="debtTile" data-tab="accountsView" aria-label="Open liabilities" hidden>
+                  <span>Debt</span>
+                  <strong id="debtTotal">EUR 0</strong>
                 </button>
               </div>
             </article>
@@ -94,9 +115,7 @@
           <section class="panel">
             <div class="section-head">
               <h2>Recent Activity</h2>
-              <div class="button-row">
-                <button class="text-button" id="addTxBtn">Manual</button>
-              </div>
+              <button class="nav-action" id="addTxBtn" aria-label="Add transaction">+</button>
             </div>
             <div class="activity-list" id="activityList"></div>
           </section>
@@ -105,7 +124,7 @@
         <section class="view" id="accountsView">
           <header class="view-header">
             <h1>Accounts</h1>
-            <button class="nav-action" id="addAccountButton" aria-label="Add account">+</button>
+            <button class="nav-action" id="addAccountButton" aria-label="New transaction">+</button>
           </header>
           <form class="inline-form hidden" id="accountForm">
             <input id="accountName" autocomplete="off" placeholder="Account name" required />
@@ -200,6 +219,26 @@
             <article class="insight-card">
               <span>Worth move</span>
               <strong id="worthMove">Flat</strong>
+            </article>
+            <article class="insight-card">
+              <span>Total assets</span>
+              <strong id="totalAssetsCard">EUR 0</strong>
+            </article>
+            <article class="insight-card">
+              <span>Total debt</span>
+              <strong id="totalDebtCard">EUR 0</strong>
+            </article>
+            <article class="insight-card">
+              <span>Property equity</span>
+              <strong id="propertyEquityCard">EUR 0</strong>
+            </article>
+            <article class="insight-card">
+              <span>Principal paid · month</span>
+              <strong id="principalPaidCard">EUR 0</strong>
+            </article>
+            <article class="insight-card">
+              <span>Savings mix</span>
+              <strong id="savingsMixCard">--</strong>
             </article>
           </div>
           <section class="panel">
@@ -364,6 +403,7 @@
             <option value="INR">INR</option>
           </select>
         </div>
+        <button class="sheet-row sheet-row-button" id="settingsAddAccountBtn">Add account</button>
         <button class="sheet-row sheet-row-button danger" id="lockButton">Lock app</button>
         <button class="sheet-close" id="settingsCloseBtn">Done</button>
       </div>
