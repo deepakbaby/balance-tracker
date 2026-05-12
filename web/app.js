@@ -6,15 +6,6 @@ const CRYPTO_IDS = {
   XRP: "ripple", DOGE: "dogecoin", AVAX: "avalanche-2", DOT: "polkadot",
   MATIC: "matic-network", LINK: "chainlink"
 };
-const ACCOUNT_COLORS = [
-  ["#0ea5e9", "rgba(14, 165, 233, 0.10)"],
-  ["#10b981", "rgba(16, 185, 129, 0.10)"],
-  ["#f59e0b", "rgba(245, 158, 11, 0.12)"],
-  ["#8b5cf6", "rgba(139, 92, 246, 0.10)"],
-  ["#ec4899", "rgba(236, 72, 153, 0.10)"],
-  ["#14b8a6", "rgba(20, 184, 166, 0.10)"]
-];
-
 const seedState = {
   accounts: [], transactions: [], holdings: [], portfolioCash: 0, portfolioEvents: [], fxRates: { EUR: 1, USD: 0.92 },
   chats: [{ id: crypto.randomUUID(), role: "agent", text: "Ready.", createdAt: new Date().toISOString() }],
@@ -23,6 +14,97 @@ const seedState = {
 
 let state = loadState();
 let isAuthenticated = false;
+
+// ----------------------------------------
+// Theme management
+// ----------------------------------------
+const THEME_KEY = "balance-theme";
+function getThemePref() { return localStorage.getItem(THEME_KEY) || "system"; }
+function applyTheme(pref) {
+  const dark = pref === "dark" || (pref === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  document.querySelectorAll("#themeSegmented button").forEach(b => {
+    b.classList.toggle("active", b.dataset.themeValue === pref);
+  });
+}
+function setThemePref(pref) {
+  localStorage.setItem(THEME_KEY, pref);
+  applyTheme(pref);
+}
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (getThemePref() === "system") applyTheme("system");
+});
+
+// ----------------------------------------
+// Haptic helper (no-op when unsupported)
+// ----------------------------------------
+function haptic(kind = "light") {
+  if (!navigator.vibrate) return;
+  const map = { light: 10, success: [10, 30, 10], warning: [15, 50, 15] };
+  navigator.vibrate(map[kind] || 10);
+}
+
+// ----------------------------------------
+// Icons + list row primitive
+// ----------------------------------------
+const ICONS = {
+  income: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>`,
+  expense: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m5 12 7 7 7-7"/></svg>`,
+  transfer: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h12"/><path d="m15 3 4 4-4 4"/><path d="M17 17H5"/><path d="m9 21-4-4 4-4"/></svg>`,
+  mortgage: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10.5V20h14v-9.5"/><path d="M10 20v-5h4v5"/></svg>`,
+  revalue: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>`,
+  wallet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h15a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h13"/><path d="M17 13h4"/></svg>`,
+  house: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10.5V20h5v-5h4v5h5v-9.5"/></svg>`,
+  debt: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 9h4a2.5 2.5 0 0 1 0 5H9"/><path d="M9 14v3"/></svg>`,
+  generic: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 4v2M12 18v2M4 12h2M18 12h2"/></svg>`,
+  chevron: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>`,
+};
+
+function categoryIconKind(category) {
+  if (!category) return "generic";
+  const c = category.toLowerCase();
+  if (c === "income" || c === "salary") return "income";
+  if (c === "transfer") return "transfer";
+  if (c.startsWith("mortgage")) return "mortgage";
+  if (c === "revalue") return "revalue";
+  if (c === "expense" || c === "manual") return "expense";
+  return "expense";
+}
+
+function accountIconKind(account) {
+  const type = account?.type || "cash";
+  if (type === "asset") return "house";
+  if (type === "liability") return "debt";
+  return "wallet";
+}
+
+function txIconTint(tx) {
+  const kind = categoryIconKind(tx.category);
+  if (kind === "income") return "mint";
+  if (kind === "expense") return "coral";
+  if (kind === "transfer") return "sky";
+  if (kind === "mortgage") return "gold";
+  if (kind === "revalue") return "muted";
+  return "muted";
+}
+
+function listRow({ icon = "generic", tint = "muted", title, subtitle, value, valueClass = "", trailing, chevron = false, dataId, dataAction, className = "" }) {
+  const trailingHtml = trailing
+    ? `<div class="row-trailing">${trailing}</div>`
+    : value != null
+      ? `<div class="row-trailing"><strong class="${valueClass}">${value}</strong></div>`
+      : "";
+  return `
+    <div class="list-row ${className}" ${dataId ? `data-id="${dataId}"` : ""} ${dataAction ? `data-action="${dataAction}"` : ""}>
+      <span class="row-icon row-icon-${tint}">${ICONS[icon] || ICONS.generic}</span>
+      <div class="row-body">
+        <strong>${title}</strong>
+        ${subtitle ? `<small>${subtitle}</small>` : ""}
+      </div>
+      ${trailingHtml}
+      ${chevron ? `<span class="row-chevron">${ICONS.chevron}</span>` : ""}
+    </div>`;
+}
 let holdingSort = "value";
 const chartRanges = { netWorth: "1W", portfolio: "1W" };
 const RANGE_DAYS = { "1W": 7, "1M": 30, "1Y": 365, "3Y": 365 * 3, "5Y": 365 * 5 };
@@ -34,6 +116,8 @@ const els = {
   netWorthDelta: document.querySelector("#netWorthDelta"),
   allocationBar: document.querySelector("#allocationBar"),
   allocationLegend: document.querySelector("#allocationLegend"),
+  compositionPanel: document.querySelector("#compositionPanel"),
+  compositionLabel: document.querySelector("#compositionLabel"),
   cashTotal: document.querySelector("#cashTotal"),
   portfolioTotal: document.querySelector("#portfolioTotal"),
   assetsTotal: document.querySelector("#assetsTotal"),
@@ -100,6 +184,8 @@ function saveState() {
 }
 
 function showToast(message, type = "success") {
+  if (type === "error") haptic("warning");
+  else if (type === "success") haptic("success");
   const toast = document.createElement("div");
   toast.className = `toast ${type}`;
   toast.textContent = message;
@@ -278,7 +364,8 @@ function render() {
   const assets = totalAssets(), liabilities = totalLiabilities();
   const worth = worthForPerspective(currentPerspective);
 
-  document.querySelector("#perspectiveLabel").textContent = PERSPECTIVE_LABEL[currentPerspective];
+  const perspectiveLabel = document.querySelector("#perspectiveLabel");
+  if (perspectiveLabel) perspectiveLabel.textContent = PERSPECTIVE_LABEL[currentPerspective];
   els.netWorth.textContent = money(worth);
   els.cashTotal.textContent = money(cash);
   els.portfolioTotal.textContent = money(portfolio);
@@ -325,6 +412,8 @@ function renderHeroDelta(trendPoints) {
 function renderAllocationBar(cash, assets, portfolio) {
   if (currentPerspective === "liquid") assets = 0;
   const total = cash + assets + portfolio;
+  if (els.compositionPanel) els.compositionPanel.hidden = total <= 0;
+  if (els.compositionLabel) els.compositionLabel.textContent = total > 0 ? money(total) : "";
   if (total <= 0) {
     els.allocationBar.hidden = true;
     return;
@@ -375,20 +464,6 @@ function renderPortfolioGrowth() {
   const pnl = value - cost;
   const pnlPercent = cost ? (pnl / cost) * 100 : 0;
   const points = filterPointsForRange(buildPortfolioGrowthPoints(), chartRanges.portfolio);
-  const max = Math.max(...points.flatMap((point) => [point.value, point.cost]), 1);
-  const plot = { left: 13, right: 4, top: 8, bottom: 18 };
-  const plotWidth = 100 - plot.left - plot.right;
-  const plotHeight = 100 - plot.top - plot.bottom;
-  const valueBars = points.map((point, i) => {
-    const x = plot.left + (points.length === 1 ? plotWidth : (i / (points.length - 1)) * plotWidth);
-    const y = plot.top + (1 - (point.value / max)) * plotHeight;
-    return `${x},${Math.max(y, plot.top)}`;
-  });
-  const costBars = points.map((point, i) => {
-    const x = plot.left + (points.length === 1 ? plotWidth : (i / (points.length - 1)) * plotWidth);
-    const y = plot.top + (1 - (point.cost / max)) * plotHeight;
-    return `${x},${Math.max(y, plot.top)}`;
-  });
 
   els.portfolioXray.innerHTML = `
     <div class="portfolio-carousel" aria-label="Portfolio charts">
@@ -398,19 +473,8 @@ function renderPortfolioGrowth() {
           <article><span>Assets value</span><strong>${money(value)}</strong></article>
           <article><span>Profit</span><strong class="${pnl >= 0 ? "positive" : "negative"}">${pnl >= 0 ? "+" : ""}${money(pnl)} · ${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(2)}%</strong></article>
         </div>
-        <div class="growth-chart" aria-label="Invested cash and current portfolio value over time">
-          <div class="growth-y-label top">${compactMoney(max)}</div>
-          <div class="growth-y-label bottom">${money(0)}</div>
-          <svg viewBox="0 0 100 100" preserveAspectRatio="none">
-            <line class="growth-axis-line" x1="${plot.left}" y1="${plot.top}" x2="${plot.left}" y2="${100 - plot.bottom}"></line>
-            <line class="growth-axis-line" x1="${plot.left}" y1="${100 - plot.bottom}" x2="${100 - plot.right}" y2="${100 - plot.bottom}"></line>
-            <polyline class="growth-cost-line" points="${costBars.join(" ")}"></polyline>
-            <polyline class="growth-value-line" points="${valueBars.join(" ")}"></polyline>
-          </svg>
-          <div class="growth-axis">
-            <span>${formatChartDate(points[0].date)}</span>
-            <span>${formatChartDate(points.at(-1).date)}</span>
-          </div>
+        <div class="chart-wrap portfolio-growth-wrap">
+          <svg id="portfolioGrowthChart" preserveAspectRatio="none" role="img" aria-label="Invested cash and current portfolio value over time"></svg>
         </div>
         <div class="growth-legend">
           <span><i class="legend-value"></i>Current assets</span>
@@ -423,6 +487,72 @@ function renderPortfolioGrowth() {
     </div>
   `;
   bindAllocationInteractions();
+  const svg = document.querySelector("#portfolioGrowthChart");
+  if (svg && points.length) renderDualLineChart(svg, 180, points);
+}
+
+function renderDualLineChart(target, height, points) {
+  const width = target.clientWidth;
+  if (!width) {
+    requestAnimationFrame(() => renderDualLineChart(target, height, points));
+    return;
+  }
+  target.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  const valuesAll = points.flatMap(p => [p.value, p.cost]);
+  const low = Math.min(...valuesAll);
+  const high = Math.max(...valuesAll);
+  const padSpan = Math.max((high - low) * 0.08, Math.max(Math.abs(high), 1) * 0.02);
+  const yMin = Math.min(low - padSpan, 0);
+  const yMax = high + padSpan;
+  const yRange = (yMax - yMin) || 1;
+  const padL = 6, padR = 6, padT = 16, padB = 22;
+  const plotW = Math.max(width - padL - padR, 1);
+  const plotH = Math.max(height - padT - padB, 1);
+  const xFor = i => padL + (i / Math.max(points.length - 1, 1)) * plotW;
+  const yFor = v => padT + (1 - ((v - yMin) / yRange)) * plotH;
+
+  const valueData = points.map((p, i) => ({ date: p.date, value: p.value, x: xFor(i), y: yFor(p.value) }));
+  const costData = points.map((p, i) => ({ date: p.date, value: p.cost, x: xFor(i), y: yFor(p.cost) }));
+  const valuePath = `M${valueData.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L")}`;
+  const costPath = `M${costData.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L")}`;
+  const last = valueData.at(-1);
+  const first = valueData[0];
+  const areaPath = `${valuePath} L${last.x.toFixed(1)} ${(padT + plotH).toFixed(1)} L${first.x.toFixed(1)} ${(padT + plotH).toFixed(1)} Z`;
+  const up = valueData.at(-1).value >= valueData[0].value;
+  const stroke = up ? "var(--good)" : "var(--danger)";
+
+  const yTicks = 4;
+  let yAxis = "";
+  for (let i = 0; i <= yTicks; i++) {
+    const v = yMax - (i / yTicks) * yRange;
+    const y = padT + (i / yTicks) * plotH;
+    yAxis += `<line x1="${padL}" x2="${width - padR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="currentColor" stroke-opacity="0.08" stroke-width="1"/>`;
+    if (i < yTicks) {
+      yAxis += `<text x="${padL + 2}" y="${(y - 4).toFixed(1)}" text-anchor="start" font-size="10" fill="currentColor" fill-opacity="0.6">${compactMoney(v)}</text>`;
+    }
+  }
+
+  const xTicks = Math.min(4, points.length - 1);
+  let xAxis = "";
+  for (let i = 0; i <= xTicks; i++) {
+    const idx = Math.round((i / xTicks) * (points.length - 1));
+    const x = xFor(idx);
+    xAxis += `<text x="${x.toFixed(1)}" y="${height - 4}" text-anchor="${i === 0 ? "start" : i === xTicks ? "end" : "middle"}" font-size="10" fill="currentColor" fill-opacity="0.55">${formatChartDate(points[idx].date)}</text>`;
+  }
+
+  target._chartData = valueData;
+  target._chartWidth = width;
+  target._chartHeight = height;
+  target.innerHTML = `
+    ${yAxis}
+    <path d="${areaPath}" fill="${stroke}" fill-opacity="0.12"/>
+    <path d="${costPath}" fill="none" stroke="var(--gold)" stroke-width="2" stroke-dasharray="4 4" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="${valuePath}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${xAxis}
+    <line class="chart-crosshair" y1="${padT}" y2="${padT + plotH}" stroke="currentColor" stroke-opacity="0.5" stroke-width="1" stroke-dasharray="3,4" opacity="0"/>
+    <circle class="chart-marker" r="4" fill="var(--surface-1)" stroke="${stroke}" stroke-width="2.5" opacity="0"/>
+  `;
+  setupChartInteraction(target);
 }
 
 const ALLOCATION_PALETTE = [
@@ -444,47 +574,35 @@ function renderPortfolioAllocationPie() {
 
   if (!total) {
     return `
-      <div class="allocation-hero">
-        <div class="allocation-pie-empty"></div>
-        <div class="allocation-copy">
-          <span>Portfolio allocation</span>
-          <strong>${money(0)}</strong>
-          <small class="muted">Add holdings or cash to see allocation.</small>
-        </div>
+      <div class="allocation-empty">
+        <strong>${money(0)}</strong>
+        <small class="muted">Add holdings or cash to see allocation.</small>
       </div>`;
   }
 
-  const r = 50, cx = 60, cy = 60;
-  let acc = 0;
-  const slices = segments.map((s, i) => {
-    const startAngle = (acc / total) * Math.PI * 2 - Math.PI / 2;
-    acc += s.value;
-    const endAngle = (acc / total) * Math.PI * 2 - Math.PI / 2;
-    const large = endAngle - startAngle > Math.PI ? 1 : 0;
-    const x1 = cx + r * Math.cos(startAngle), y1 = cy + r * Math.sin(startAngle);
-    const x2 = cx + r * Math.cos(endAngle), y2 = cy + r * Math.sin(endAngle);
-    const single = segments.length === 1;
-    const d = single
-      ? `M ${cx - r} ${cy} a ${r} ${r} 0 1 0 ${r * 2} 0 a ${r} ${r} 0 1 0 ${-r * 2} 0`
-      : `M ${cx} ${cy} L ${x1.toFixed(3)} ${y1.toFixed(3)} A ${r} ${r} 0 ${large} 1 ${x2.toFixed(3)} ${y2.toFixed(3)} Z`;
-    return `<path d="${d}" fill="${s.color}" data-allocation-idx="${i}" tabindex="0" role="button" aria-label="${escapeHtml(s.label)}: ${money(s.value)}"></path>`;
+  const stack = segments.map(s => {
+    const pct = (s.value / total) * 100;
+    return `<span class="alloc-stack-segment" style="width:${pct.toFixed(2)}%;background:${s.color}" title="${escapeHtml(s.label)} · ${pct.toFixed(1)}%"></span>`;
   }).join("");
 
-  const segmentsJson = encodeURIComponent(JSON.stringify(segments));
+  const rows = segments.map(s => {
+    const pct = (s.value / total) * 100;
+    return `
+      <div class="alloc-row">
+        <span class="alloc-dot" style="background:${s.color}"></span>
+        <strong>${escapeHtml(s.label)}</strong>
+        <span class="muted alloc-pct">${pct.toFixed(1)}%</span>
+        <strong class="alloc-value">${money(s.value)}</strong>
+      </div>`;
+  }).join("");
+
   return `
-    <div class="allocation-hero allocation-hero--solo" data-allocation-segments="${segmentsJson}" data-allocation-total="${total}">
-      <div class="allocation-pie-wrap">
-        <svg class="allocation-pie-svg" viewBox="0 0 120 120" aria-label="Portfolio allocation">
-          ${slices}
-          <circle cx="${cx}" cy="${cy}" r="${r * 0.58}" fill="var(--panel)" pointer-events="none"></circle>
-        </svg>
-        <div class="allocation-pie-center" id="allocationPieCenter">
-          <span class="allocation-pie-label">Total</span>
-          <strong>${money(total)}</strong>
-        </div>
-      </div>
+    <div class="allocation-summary">
+      <span>Portfolio allocation</span>
+      <strong>${money(total)}</strong>
     </div>
-    <div class="allocation-breakdown" id="allocationBreakdown"></div>
+    <div class="alloc-stack">${stack}</div>
+    <div class="alloc-list">${rows}</div>
   `;
 }
 
@@ -582,24 +700,22 @@ function renderAccounts() {
     els.accountList.innerHTML = `<div class="empty-state"><svg><use href="#icon-wallet"></use></svg><h3>No Accounts</h3><p>Add one to start.</p></div>`;
     return;
   }
-  let colorIndex = 0;
   const renderCard = (acc) => {
     const count = state.transactions.filter(tx => tx.accountId === acc.id).length;
-    const [accent, accentSoft] = ACCOUNT_COLORS[colorIndex++ % ACCOUNT_COLORS.length];
     const type = acc.type || "cash";
+    const tint = type === "asset" ? "sky" : type === "liability" ? "coral" : "mint";
     const valueClass = type === "liability" ? "negative" : "";
     const displayBalance = type === "liability" ? `-${money(acc.balance)}` : money(acc.balance);
-    return `
-      <article class="account-card" data-id="${acc.id}" style="--card-accent:${accent}; --card-accent-soft:${accentSoft};">
-        <div class="account-top">
-          <strong>${escapeHtml(acc.name)}</strong>
-          <div class="card-value-actions">
-            <strong class="${valueClass}">${displayBalance}</strong>
-            <button class="action-btn edit-account" data-id="${acc.id}" title="Edit account" aria-label="Edit ${escapeHtml(acc.name)}">✎</button>
-          </div>
-        </div>
-        <small>${count} transaction${count === 1 ? "" : "s"}</small>
-      </article>`;
+    return listRow({
+      icon: accountIconKind(acc),
+      tint,
+      title: escapeHtml(acc.name),
+      subtitle: `${count} transaction${count === 1 ? "" : "s"}`,
+      value: displayBalance,
+      valueClass,
+      chevron: true,
+      dataId: acc.id,
+    });
   };
   const section = (title, accounts, total, totalClass = "") => {
     if (!accounts.length) return "";
@@ -609,7 +725,7 @@ function renderAccounts() {
           <h3>${title}</h3>
           <strong class="${totalClass}">${total}</strong>
         </div>
-        ${accounts.map(renderCard).join("")}
+        <div class="list-grouped">${accounts.map(renderCard).join("")}</div>
       </div>`;
   };
   const cash = accountsOfType("cash");
@@ -632,25 +748,32 @@ function renderHoldings() {
     const aPnl = holdingPnlEur(a), bPnl = holdingPnlEur(b);
     return holdingSort === "pnl" ? bPnl - aPnl : bValue - aValue;
   });
-  els.holdingList.innerHTML = sortedHoldings.map(h => {
-    const value = holdingValueEur(h), pnl = holdingPnlEur(h), cost = holdingCostEur(h);
-    const pnlPercent = cost ? (pnl / cost) * 100 : 0;
-    return `
-      <article class="holding-row" data-id="${h.id}">
-        <div class="holding-top">
-          <strong>${escapeHtml(h.symbol)} <small class="muted">${h.currency}</small></strong>
-          <div class="card-value-actions">
-            <strong>${money(value)}</strong>
-            <button class="action-btn edit-holding" data-id="${h.id}" title="Edit holding" aria-label="Edit ${escapeHtml(h.symbol)}">✎</button>
-          </div>
-        </div>
-        <div class="holding-meta">
-          <small>${h.quantity} units at ${currencyMoney(h.price, h.currency)}</small>
-          <small class="${pnl >= 0 ? "positive" : "negative"}">${pnl >= 0 ? "+" : ""}${money(pnl)} (${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(2)}%)</small>
-        </div>
-      </article>`;
-  }).join("");
+  els.holdingList.innerHTML = sortedHoldings.map(h => holdingRow(h)).join("");
   bindCardActions(els.holdingList, openHoldingDetail, openEditHolding);
+}
+
+function holdingRow(h) {
+  const value = holdingValueEur(h), pnl = holdingPnlEur(h), cost = holdingCostEur(h);
+  const pnlPercent = cost ? (pnl / cost) * 100 : 0;
+  const pnlClass = pnl >= 0 ? "positive" : "negative";
+  const trailing = `
+    <strong>${money(value)}</strong>
+    <small class="${pnlClass}">${pnl >= 0 ? "+" : ""}${money(pnl)} (${pnlPercent >= 0 ? "+" : ""}${pnlPercent.toFixed(2)}%)</small>
+  `;
+  const sym = (h.symbol || "?").toUpperCase();
+  const tints = ["mint", "sky", "gold", "coral", "muted"];
+  const tint = tints[sym.charCodeAt(0) % tints.length];
+  const disc = `<span class="symbol-disc symbol-disc-${tint}">${escapeHtml(sym.slice(0, 2))}</span>`;
+  return `
+    <div class="list-row" data-id="${h.id}">
+      ${disc}
+      <div class="row-body">
+        <strong>${escapeHtml(sym)} <small class="muted">${escapeHtml(h.currency || "")}</small></strong>
+        <small>${h.quantity} × ${currencyMoney(h.price, h.currency)}</small>
+      </div>
+      <div class="row-trailing">${trailing}</div>
+      <span class="row-chevron">${ICONS.chevron}</span>
+    </div>`;
 }
 
 function renderActivity() {
@@ -659,19 +782,23 @@ function renderActivity() {
     els.activityList.innerHTML = `<div class="empty-state"><h3>No Activity</h3><p>New entries appear here.</p></div>`;
     return;
   }
-  els.activityList.innerHTML = rows.map(tx => `
-    <div class="activity-item">
-      <div class="activity-line">
-        <strong>${escapeHtml(tx.note || tx.category)}</strong>
-        <strong class="${tx.amount >= 0 ? "positive" : "negative"}">${money(tx.amount)}</strong>
-      </div>
-      <div class="activity-line" style="margin-top: 4px;">
-        <small class="muted">${escapeHtml(tx.accountName || "Unknown")} · ${new Date(tx.createdAt).toLocaleDateString()}</small>
-        <button class="action-btn edit-tx" data-id="${tx.id}" style="border:0; background:transparent;">✎</button>
-      </div>
-    </div>
-  `).join("");
+  els.activityList.innerHTML = rows.map(tx => activityRow(tx)).join("");
   bindCardActions(els.activityList, null, openEditTx);
+}
+
+function activityRow(tx) {
+  const kind = categoryIconKind(tx.category);
+  const tint = txIconTint(tx);
+  const valueClass = tx.amount >= 0 ? "positive" : "negative";
+  return listRow({
+    icon: kind,
+    tint,
+    title: escapeHtml(tx.note || tx.category || "Transaction"),
+    subtitle: `${escapeHtml(tx.accountName || "Unknown")} · ${new Date(tx.createdAt).toLocaleDateString()}`,
+    value: `${tx.amount >= 0 ? "+" : ""}${money(tx.amount)}`,
+    valueClass,
+    dataId: tx.id,
+  });
 }
 
 function renderBars() {
@@ -774,13 +901,20 @@ function renderInsights() {
   if (principalPaid > 0) signals.push({ type: "Equity", title: `+${money(principalPaid)}`, detail: "principal paid this month" });
 
   els.signalCount.textContent = `${signals.length} active`;
-  els.signalList.innerHTML = signals.map(s => `
-    <article class="signal-card">
-      <span>${escapeHtml(s.type)}</span>
-      <strong>${escapeHtml(s.title)}</strong>
-      <small class="muted">${escapeHtml(s.detail)}</small>
-    </article>
-  `).join("");
+  const tintForSignal = {
+    Flow: "mint", Mix: "sky", Exposure: "gold", Cash: "mint",
+    Move: "sky", Debt: "coral", Equity: "mint",
+  };
+  const iconForSignal = {
+    Flow: "income", Mix: "revalue", Exposure: "generic", Cash: "wallet",
+    Move: "transfer", Debt: "debt", Equity: "mortgage",
+  };
+  els.signalList.innerHTML = signals.map(s => listRow({
+    icon: iconForSignal[s.type] || "generic",
+    tint: tintForSignal[s.type] || "muted",
+    title: escapeHtml(s.title),
+    subtitle: `${escapeHtml(s.type)} · ${escapeHtml(s.detail)}`,
+  })).join("");
 }
 
 function barRow(label, value, ratio) {
@@ -891,45 +1025,84 @@ function filterPointsForRange(points, range) {
 }
 
 function renderLineChart(target, height, points = buildNetWorthTrend()) {
-  const width = target.clientWidth || 640;
+  const width = target.clientWidth;
+  if (!width) {
+    requestAnimationFrame(() => renderLineChart(target, height, points));
+    return;
+  }
   target.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  if (width === 0) return; // Hidden
+  attachChartResizeObserver(target, height);
+  if (!points.length) { target.innerHTML = ""; return; }
   const values = points.map(p => p.value);
   const low = Math.min(...values);
   const high = Math.max(...values);
-  const padding = Math.max((high - low) * 0.12, Math.max(Math.abs(high), 1) * 0.02);
-  const min = low - padding;
-  const max = high + padding;
-  const span = max - min || 1;
-  const axis = { left: 42, right: 8, top: 10, bottom: 22 };
-  const plotWidth = Math.max(width - axis.left - axis.right, 1);
-  const plotHeight = Math.max(height - axis.top - axis.bottom, 1);
-  const chartData = points.map((p, i) => {
-    const x = axis.left + (i / Math.max(points.length - 1, 1)) * plotWidth;
-    const y = axis.top + (1 - ((p.value - min) / span)) * plotHeight;
-    return { ...p, x, y };
-  });
-  const coords = chartData.map((point) => `${point.x},${point.y}`);
-  const yTicks = [max, min + span / 2, min];
+  const padSpan = Math.max((high - low) * 0.08, Math.max(Math.abs(high), 1) * 0.02);
+  const yMin = low - padSpan;
+  const yMax = high + padSpan;
+  const yRange = (yMax - yMin) || 1;
+  const padL = 6, padR = 6, padT = 16, padB = 22;
+  const plotW = Math.max(width - padL - padR, 1);
+  const plotH = Math.max(height - padT - padB, 1);
+
+  const chartData = points.map((p, i) => ({
+    ...p,
+    x: padL + (i / Math.max(points.length - 1, 1)) * plotW,
+    y: padT + (1 - ((p.value - yMin) / yRange)) * plotH,
+  }));
+  const coords = chartData.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`);
+  const linePath = `M${coords.join(" L")}`;
+  const last = chartData.at(-1);
+  const first = chartData[0];
+  const areaPath = `${linePath} L${last.x.toFixed(1)} ${(padT + plotH).toFixed(1)} L${first.x.toFixed(1)} ${(padT + plotH).toFixed(1)} Z`;
+  const up = values.at(-1) >= values[0];
+  const stroke = up ? "var(--good)" : "var(--danger)";
+
+  // 4 y-axis grid lines, labels sit just above each line at the left edge
+  const yTicks = 4;
+  let yAxis = "";
+  for (let i = 0; i <= yTicks; i++) {
+    const v = yMax - (i / yTicks) * yRange;
+    const y = padT + (i / yTicks) * plotH;
+    yAxis += `<line x1="${padL}" x2="${width - padR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="currentColor" stroke-opacity="0.08" stroke-width="1"/>`;
+    if (i < yTicks) {
+      yAxis += `<text x="${padL + 2}" y="${(y - 4).toFixed(1)}" text-anchor="start" font-size="10" fill="currentColor" fill-opacity="0.6">${compactMoney(v)}</text>`;
+    }
+  }
+
+  // up to 4 x-axis date ticks
+  const xTicks = Math.min(4, points.length - 1);
+  let xAxis = "";
+  for (let i = 0; i <= xTicks; i++) {
+    const idx = Math.round((i / xTicks) * (points.length - 1));
+    const x = chartData[idx].x;
+    xAxis += `<text x="${x.toFixed(1)}" y="${height - 4}" text-anchor="${i === 0 ? "start" : i === xTicks ? "end" : "middle"}" font-size="10" fill="currentColor" fill-opacity="0.55">${formatChartDate(points[idx].date)}</text>`;
+  }
+
   target._chartData = chartData;
   target._chartWidth = width;
   target._chartHeight = height;
   target.innerHTML = `
-    <defs><linearGradient id="g${target.id}" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#10b981"/><stop offset="100%" stop-color="#059669"/></linearGradient></defs>
-    ${yTicks.map((tick) => {
-      const y = axis.top + (1 - ((tick - min) / span)) * plotHeight;
-      return `<line x1="${axis.left}" y1="${y}" x2="${width - axis.right}" y2="${y}" stroke="#dbe6dc" stroke-width="1" />
-        <text x="${axis.left - 6}" y="${y + 3}" text-anchor="end" fill="#6f7c72" font-size="9" font-weight="700">${compactMoney(tick)}</text>`;
-    }).join("")}
-    <line x1="${axis.left}" y1="${axis.top}" x2="${axis.left}" y2="${height - axis.bottom}" stroke="#9fb0a4" stroke-width="1.25" />
-    <line x1="${axis.left}" y1="${height - axis.bottom}" x2="${width - axis.right}" y2="${height - axis.bottom}" stroke="#9fb0a4" stroke-width="1.25" />
-    <text x="${axis.left}" y="${height - 5}" text-anchor="start" fill="#6f7c72" font-size="9" font-weight="700">${formatChartDate(points[0].date)}</text>
-    <text x="${width - axis.right}" y="${height - 5}" text-anchor="end" fill="#6f7c72" font-size="9" font-weight="700">${formatChartDate(points.at(-1).date)}</text>
-    <polyline points="${coords.join(" ")}" fill="none" stroke="url(#g${target.id})" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
-    <line class="chart-crosshair" y1="${axis.top}" y2="${height - axis.bottom}" stroke="#0f172a" stroke-width="1.5" stroke-dasharray="3,4" opacity="0" />
-    <circle class="chart-marker" r="5" fill="#ffffff" stroke="#059669" stroke-width="3" opacity="0" />
+    ${yAxis}
+    <path d="${areaPath}" fill="${stroke}" fill-opacity="0.12"/>
+    <path d="${linePath}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${xAxis}
+    <line class="chart-crosshair" y1="${padT}" y2="${padT + plotH}" stroke="currentColor" stroke-opacity="0.5" stroke-width="1" stroke-dasharray="3,4" opacity="0"/>
+    <circle class="chart-marker" r="4" fill="var(--surface-1)" stroke="${stroke}" stroke-width="2.5" opacity="0"/>
   `;
   setupChartInteraction(target);
+}
+
+function attachChartResizeObserver(target, height) {
+  if (target._chartObserved || !window.ResizeObserver) return;
+  target._chartObserved = true;
+  let lastWidth = target.clientWidth;
+  const obs = new ResizeObserver(() => {
+    const w = target.clientWidth;
+    if (!w || w === lastWidth) return;
+    lastWidth = w;
+    renderLineChart(target, height);
+  });
+  obs.observe(target);
 }
 
 function setupChartInteraction(target) {
@@ -952,7 +1125,8 @@ function setupChartInteraction(target) {
     marker.setAttribute("cx", nearest.x);
     marker.setAttribute("cy", nearest.y);
     marker.setAttribute("opacity", "1");
-    tooltip.textContent = `${formatChartDate(nearest.date)} · ${money(nearest.value)}`;
+    const formatValue = target._formatValue || money;
+    tooltip.textContent = `${formatChartDate(nearest.date)} · ${formatValue(nearest.value)}`;
     tooltip.classList.add("active");
     tooltip.style.left = `${(nearest.x / target._chartWidth) * 100}%`;
     tooltip.style.top = `${Math.max((nearest.y / target._chartHeight) * 100, 12)}%`;
@@ -1148,21 +1322,21 @@ function openEditTx(id) {
 }
 
 function bindCardActions(rootEl, openDetail, openEdit) {
-  rootEl.querySelectorAll(".edit-account, .edit-holding, .edit-tx").forEach(btn => {
+  rootEl.querySelectorAll(".edit-account, .edit-holding, .edit-tx, [data-action='edit']").forEach(btn => {
     btn.addEventListener("click", e => {
       e.preventDefault();
       e.stopPropagation();
       openEdit(btn.dataset.id);
     });
   });
-  if (openDetail) {
-    rootEl.querySelectorAll(".account-card, .holding-row").forEach(card => {
-      card.addEventListener("click", e => {
-        if (e.target.closest(".action-btn")) return;
-        openDetail(card.dataset.id);
-      });
+  rootEl.querySelectorAll(".account-card, .holding-row, .list-row[data-id]").forEach(card => {
+    card.addEventListener("click", e => {
+      if (e.target.closest(".action-btn, [data-action='edit']")) return;
+      const id = card.dataset.id;
+      if (openDetail) openDetail(id);
+      else if (openEdit) openEdit(id);
     });
-  }
+  });
 }
 
 document.body.addEventListener("click", e => {
@@ -1198,15 +1372,12 @@ function openAccountDetail(id) {
   document.querySelector("#accountDetailNet").textContent = money(net);
   document.querySelector("#accountDetailNet").className = net >= 0 ? "positive" : "negative";
 
-  document.querySelector("#accountDetailTxList").innerHTML = txs.length ? txs.map(tx => `
-    <div class="activity-item">
-      <div class="activity-line">
-        <strong>${escapeHtml(tx.note || tx.category)}</strong>
-        <strong class="${tx.amount >= 0 ? 'positive' : 'negative'}">${money(tx.amount)}</strong>
-      </div>
-      <small class="muted">${new Date(tx.createdAt).toLocaleDateString()}</small>
-    </div>
-  `).join("") : `<p class="muted">No transactions found.</p>`;
+  const txListEl = document.querySelector("#accountDetailTxList");
+  txListEl.innerHTML = txs.length
+    ? txs.map(tx => activityRow(tx)).join("")
+    : `<p class="muted">No transactions found.</p>`;
+  bindCardActions(txListEl, null, openEditTx);
+  els.accountDetailView.dataset.id = id;
   els.accountDetailView.classList.add("active");
   pushOverlay(() => els.accountDetailView.classList.remove("active"));
 }
@@ -1271,15 +1442,16 @@ async function loadHoldingChart(holding, range) {
       chartEl.innerHTML = `<div class="chart-state muted">No data</div>`;
       return;
     }
-    chartEl.innerHTML = renderHoldingSparkline(data.points, holding);
+    renderHoldingSparkline(chartEl, data.points, holding);
   } catch {
     chartEl.innerHTML = `<div class="chart-state muted">Could not load chart</div>`;
   }
 }
 
-function renderHoldingSparkline(points, holding) {
-  const w = 360, h = 160;
-  const padL = 44, padR = 10, padT = 10, padB = 22;
+function renderHoldingSparkline(chartEl, points, holding) {
+  const w = chartEl.clientWidth || 360;
+  const h = 180;
+  const padL = 6, padR = 6, padT = 16, padB = 22;
   const plotW = w - padL - padR;
   const plotH = h - padT - padB;
   const closes = points.map(p => p.c);
@@ -1292,54 +1464,68 @@ function renderHoldingSparkline(points, holding) {
   const yRange = yMax - yMin;
   const yFor = v => padT + ((yMax - v) / yRange) * plotH;
   const xFor = i => padL + (i / Math.max(points.length - 1, 1)) * plotW;
-  const coords = points.map((p, i) => [xFor(i), yFor(p.c)]);
-  const linePath = coords.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
-  const areaPath = `${linePath} L${coords.at(-1)[0].toFixed(1)} ${padT + plotH} L${coords[0][0].toFixed(1)} ${padT + plotH} Z`;
+  const chartData = points.map((p, i) => ({
+    date: p.t,
+    value: p.c,
+    x: xFor(i),
+    y: yFor(p.c),
+  }));
+  const coords = chartData.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`);
+  const linePath = `M${coords.join(" L")}`;
+  const last = chartData.at(-1);
+  const first = chartData[0];
+  const areaPath = `${linePath} L${last.x.toFixed(1)} ${padT + plotH} L${first.x.toFixed(1)} ${padT + plotH} Z`;
   const up = closes.at(-1) >= closes[0];
-  const stroke = up ? "var(--good, #11c270)" : "var(--danger, #ff4d4f)";
+  const stroke = up ? "var(--good)" : "var(--danger)";
 
   const fmtPrice = v => v >= 100 ? v.toFixed(0) : v.toFixed(2);
-  const fmtDate = ts => {
-    const d = new Date(ts);
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  };
 
-  // Y-axis: 4 horizontal grid lines + labels at evenly spaced price levels
+  // Y-axis grid + labels inline above each grid line
   const yTicks = 4;
   let yAxis = "";
   for (let i = 0; i <= yTicks; i++) {
     const v = yMax - (i / yTicks) * yRange;
     const y = padT + (i / yTicks) * plotH;
-    yAxis += `<line x1="${padL}" x2="${w - padR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="currentColor" stroke-opacity="0.08" stroke-width="1" />`;
-    yAxis += `<text x="${padL - 6}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="10" fill="currentColor" fill-opacity="0.55">${fmtPrice(v)}</text>`;
+    yAxis += `<line x1="${padL}" x2="${w - padR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="currentColor" stroke-opacity="0.08" stroke-width="1"/>`;
+    if (i < yTicks) {
+      yAxis += `<text x="${padL + 2}" y="${(y - 4).toFixed(1)}" text-anchor="start" font-size="10" fill="currentColor" fill-opacity="0.6">${fmtPrice(v)}</text>`;
+    }
   }
 
-  // X-axis: up to 4 evenly spaced date ticks
+  // X-axis date ticks
   const xTicks = Math.min(4, points.length - 1);
   let xAxis = "";
   for (let i = 0; i <= xTicks; i++) {
     const idx = Math.round((i / xTicks) * (points.length - 1));
-    const x = xFor(idx);
-    xAxis += `<text x="${x.toFixed(1)}" y="${h - 4}" text-anchor="${i === 0 ? "start" : i === xTicks ? "end" : "middle"}" font-size="10" fill="currentColor" fill-opacity="0.55">${fmtDate(points[idx].t)}</text>`;
+    const x = chartData[idx].x;
+    xAxis += `<text x="${x.toFixed(1)}" y="${h - 4}" text-anchor="${i === 0 ? "start" : i === xTicks ? "end" : "middle"}" font-size="10" fill="currentColor" fill-opacity="0.55">${formatChartDate(points[idx].t)}</text>`;
   }
 
   let avgLine = "";
   let avgLabel = "";
   if (avgCost != null && avgCost >= yMin && avgCost <= yMax) {
     const y = yFor(avgCost).toFixed(1);
-    avgLine = `<line x1="${padL}" x2="${w - padR}" y1="${y}" y2="${y}" stroke="currentColor" stroke-width="1" stroke-dasharray="4 4" stroke-opacity="0.5" />`;
+    avgLine = `<line x1="${padL}" x2="${w - padR}" y1="${y}" y2="${y}" stroke="currentColor" stroke-width="1" stroke-dasharray="4 4" stroke-opacity="0.5"/>`;
     avgLabel = `<text x="${w - padR - 2}" y="${(Number(y) - 3).toFixed(1)}" text-anchor="end" font-size="10" fill="currentColor" fill-opacity="0.7">Avg ${fmtPrice(avgCost)}</text>`;
   }
 
-  return `
-    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet" class="holding-chart-svg" aria-label="Price history">
+  chartEl.innerHTML = `
+    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" class="holding-chart-svg" aria-label="Price history">
       ${yAxis}
-      <path d="${areaPath}" fill="${stroke}" fill-opacity="0.12" />
-      <path d="${linePath}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+      <path d="${areaPath}" fill="${stroke}" fill-opacity="0.12"/>
+      <path d="${linePath}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
       ${avgLine}
       ${avgLabel}
       ${xAxis}
+      <line class="chart-crosshair" y1="${padT}" y2="${padT + plotH}" stroke="currentColor" stroke-opacity="0.5" stroke-width="1" stroke-dasharray="3,4" opacity="0"/>
+      <circle class="chart-marker" r="4" fill="var(--surface-1)" stroke="${stroke}" stroke-width="2.5" opacity="0"/>
     </svg>`;
+  const svg = chartEl.querySelector("svg");
+  svg._chartData = chartData;
+  svg._chartWidth = w;
+  svg._chartHeight = h;
+  svg._formatValue = fmtPrice;
+  setupChartInteraction(svg);
 }
 
 document.querySelector("#holdingChartRanges").addEventListener("click", e => {
@@ -1353,6 +1539,119 @@ document.querySelector("#holdingChartRanges").addEventListener("click", e => {
 
 document.querySelector("#closeAccountDetail").addEventListener("click", dismissTopOverlay);
 document.querySelector("#closeHoldingDetail").addEventListener("click", dismissTopOverlay);
+document.querySelector("#editAccountDetail").addEventListener("click", () => {
+  const id = els.accountDetailView.dataset.id;
+  if (id) openEditAccount(id);
+});
+document.querySelector("#editHoldingDetail").addEventListener("click", () => {
+  const id = els.holdingDetailView.dataset.id;
+  if (id) openEditHolding(id);
+});
+
+// Swipe-from-left-edge to dismiss detail views
+function enableSwipeBack(viewEl) {
+  let startX = 0, startY = 0, dx = 0, startedAt = 0, tracking = false;
+  viewEl.addEventListener("touchstart", (e) => {
+    const t = e.touches[0];
+    if (t.clientX > 28) return;
+    tracking = true;
+    startX = t.clientX;
+    startY = t.clientY;
+    startedAt = Date.now();
+    viewEl.style.transition = "none";
+  }, { passive: true });
+  viewEl.addEventListener("touchmove", (e) => {
+    if (!tracking) return;
+    const t = e.touches[0];
+    dx = t.clientX - startX;
+    const dy = t.clientY - startY;
+    if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 20) {
+      tracking = false;
+      viewEl.style.transform = "";
+      viewEl.style.transition = "";
+      return;
+    }
+    if (dx > 0) viewEl.style.transform = `translateX(${dx}px)`;
+  }, { passive: true });
+  viewEl.addEventListener("touchend", () => {
+    if (!tracking) return;
+    tracking = false;
+    const elapsed = Date.now() - startedAt;
+    const velocity = dx / Math.max(elapsed, 1);
+    viewEl.style.transition = "transform 0.22s cubic-bezier(0.32, 0.72, 0, 1)";
+    if (dx > 80 || velocity > 0.4) {
+      viewEl.style.transform = `translateX(100%)`;
+      setTimeout(() => {
+        viewEl.style.transform = "";
+        viewEl.style.transition = "";
+        dismissTopOverlay();
+      }, 200);
+    } else {
+      viewEl.style.transform = "";
+    }
+    dx = 0;
+  });
+}
+enableSwipeBack(els.accountDetailView);
+enableSwipeBack(els.holdingDetailView);
+
+// Pull-to-refresh on the main scroller
+(function enablePullToRefresh() {
+  const indicator = document.createElement("div");
+  indicator.className = "pull-indicator";
+  indicator.innerHTML = `<div class="pull-spinner"></div>`;
+  document.body.appendChild(indicator);
+
+  let startY = 0, dy = 0, tracking = false, refreshing = false;
+  const threshold = 70;
+
+  function isOverlayOpen() {
+    return overlayStack.length > 0 || els.accountDetailView.classList.contains("active") || els.holdingDetailView.classList.contains("active");
+  }
+
+  window.addEventListener("touchstart", (e) => {
+    if (refreshing || isOverlayOpen()) return;
+    if (window.scrollY > 0) return;
+    startY = e.touches[0].clientY;
+    tracking = true;
+  }, { passive: true });
+
+  window.addEventListener("touchmove", (e) => {
+    if (!tracking) return;
+    dy = e.touches[0].clientY - startY;
+    if (dy <= 0) {
+      indicator.style.transform = "";
+      indicator.style.opacity = "";
+      return;
+    }
+    const pull = Math.min(dy * 0.5, threshold + 20);
+    indicator.style.transform = `translate(-50%, ${pull}px)`;
+    indicator.style.opacity = Math.min(pull / threshold, 1).toString();
+  }, { passive: true });
+
+  window.addEventListener("touchend", async () => {
+    if (!tracking) return;
+    tracking = false;
+    if (dy > threshold && !refreshing) {
+      refreshing = true;
+      indicator.classList.add("active");
+      indicator.style.transform = `translate(-50%, ${threshold}px)`;
+      try {
+        await loadServerState();
+        haptic("success");
+      } finally {
+        indicator.classList.remove("active");
+        indicator.style.transform = "";
+        indicator.style.opacity = "";
+        refreshing = false;
+      }
+    } else {
+      indicator.style.transform = "";
+      indicator.style.opacity = "";
+    }
+    dy = 0;
+  });
+})();
 
 // Original Add Forms
 const ACCOUNT_TYPES = [
@@ -1729,7 +2028,8 @@ document.querySelectorAll("[data-tab]").forEach(btn => {
     const t = btn.dataset.tab;
     document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === t));
     document.querySelectorAll(".tab").forEach(i => i.classList.toggle("active", i.dataset.tab === t));
-    window.dispatchEvent(new Event('resize')); 
+    haptic("light");
+    window.dispatchEvent(new Event('resize'));
   };
   btn.addEventListener("click", openTab);
   btn.addEventListener("keydown", (event) => {
@@ -1744,6 +2044,7 @@ document.querySelector("#perspectiveTabs").addEventListener("click", (e) => {
   if (!btn) return;
   currentPerspective = btn.dataset.perspective;
   document.querySelectorAll("#perspectiveTabs button").forEach(b => b.classList.toggle("active", b === btn));
+  haptic("light");
   render();
 });
 
@@ -1776,6 +2077,33 @@ function closeSettings() { dismissTopOverlay(); }
 document.querySelector("#settingsBtn").addEventListener("click", openSettings);
 document.querySelector("#settingsCloseBtn").addEventListener("click", closeSettings);
 settingsBackdrop.addEventListener("click", e => { if (e.target === settingsBackdrop) closeSettings(); });
+
+document.querySelector("#themeSegmented").addEventListener("click", (event) => {
+  const btn = event.target.closest("[data-theme-value]");
+  if (!btn) return;
+  setThemePref(btn.dataset.themeValue);
+  haptic("light");
+});
+applyTheme(getThemePref());
+
+// Compact top bar that fades in on scroll
+(function enableCompactTopBar() {
+  const bar = document.createElement("div");
+  bar.className = "top-bar";
+  bar.innerHTML = `<span class="top-bar-title"></span>`;
+  document.body.appendChild(bar);
+  const title = bar.querySelector(".top-bar-title");
+  function update() {
+    const visible = window.scrollY > 96;
+    bar.classList.toggle("visible", visible);
+    if (visible) {
+      const h1 = document.querySelector(".view.active .view-header h1");
+      if (h1) title.textContent = h1.textContent;
+    }
+  }
+  window.addEventListener("scroll", update, { passive: true });
+  window.addEventListener("resize", update);
+})();
 
 document.querySelector("#lockButton").addEventListener("click", async () => {
   closeSettings();

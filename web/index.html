@@ -4,8 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="robots" content="noindex,nofollow" />
-    <meta name="theme-color" content="#0f172a" />
-    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#F4F6FA" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#070B17" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Balance" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -13,6 +14,17 @@
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" sizes="180x180" href="./icon-180x180.png" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icon-192x192.png" />
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem("balance-theme") || "system";
+          var dark = saved === "dark" || (saved === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+        } catch (_) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -55,69 +67,67 @@
               </svg>
             </button>
           </header>
-          <div class="metric-grid">
-            <article class="metric primary net-worth-card">
-              <div class="perspective-tabs" id="perspectiveTabs" role="tablist" aria-label="Wealth perspective">
-                <button type="button" data-perspective="net" class="active">Net</button>
-                <button type="button" data-perspective="gross">Gross</button>
-                <button type="button" data-perspective="liquid">Liquid</button>
-              </div>
-              <div class="net-worth-main">
-                <span id="perspectiveLabel">Net worth</span>
-                <strong id="netWorth">EUR 0</strong>
-                <small id="netWorthDelta" hidden></small>
-              </div>
-              <div class="allocation-bar" id="allocationBar" hidden>
-                <div class="allocation-track">
-                  <span class="allocation-segment" data-kind="cash"></span>
-                  <span class="allocation-segment" data-kind="property"></span>
-                  <span class="allocation-segment" data-kind="portfolio"></span>
-                </div>
-                <div class="allocation-legend" id="allocationLegend"></div>
-              </div>
-              <div class="net-worth-breakdown">
-                <button type="button" class="net-worth-tile" data-tab="accountsView" aria-label="Open accounts">
-                  <span>Cash</span>
-                  <strong id="cashTotal">EUR 0</strong>
-                </button>
-                <button type="button" class="net-worth-tile" data-tab="portfolioView" aria-label="Open portfolio">
-                  <span>Portfolio</span>
-                  <strong id="portfolioTotal">EUR 0</strong>
-                </button>
-                <button type="button" class="net-worth-tile" id="assetsTile" data-tab="accountsView" aria-label="Open assets" hidden>
-                  <span>Property</span>
-                  <strong id="assetsTotal">EUR 0</strong>
-                </button>
-                <button type="button" class="net-worth-tile" id="debtTile" data-tab="accountsView" aria-label="Open liabilities" hidden>
-                  <span>Debt</span>
-                  <strong id="debtTotal">EUR 0</strong>
-                </button>
-              </div>
-            </article>
-          </div>
-
-          <section class="panel">
-            <div class="section-head">
-              <h2>Trend</h2>
-              <div class="range-tabs" data-chart-range="netWorth" aria-label="Net worth chart range">
-                <button class="active" data-range="1W" type="button">1W</button>
-                <button data-range="1M" type="button">1M</button>
-                <button data-range="1Y" type="button">1Y</button>
-                <button data-range="3Y" type="button">3Y</button>
-                <button data-range="5Y" type="button">5Y</button>
-              </div>
+          <article class="metric primary net-worth-card">
+            <div class="perspective-tabs" id="perspectiveTabs" role="tablist" aria-label="Wealth perspective">
+              <button type="button" data-perspective="net" class="active">Net</button>
+              <button type="button" data-perspective="gross">Gross</button>
+              <button type="button" data-perspective="liquid">Liquid</button>
+            </div>
+            <div class="net-worth-main">
+              <strong id="netWorth">EUR 0</strong>
+              <small id="netWorthDelta" hidden></small>
             </div>
             <div class="chart-wrap">
-              <svg id="netWorthChart" role="img" aria-label="Net worth chart"></svg>
+              <svg id="netWorthChart" preserveAspectRatio="none" role="img" aria-label="Net worth chart"></svg>
+            </div>
+            <div class="range-tabs" data-chart-range="netWorth" aria-label="Net worth chart range">
+              <button class="active" data-range="1W" type="button">1W</button>
+              <button data-range="1M" type="button">1M</button>
+              <button data-range="1Y" type="button">1Y</button>
+              <button data-range="3Y" type="button">3Y</button>
+              <button data-range="5Y" type="button">5Y</button>
+            </div>
+          </article>
+
+          <section class="panel" id="compositionPanel" hidden>
+            <div class="section-head">
+              <h2>Composition</h2>
+              <span id="compositionLabel"></span>
+            </div>
+            <div class="allocation-bar" id="allocationBar">
+              <div class="allocation-track">
+                <span class="allocation-segment" data-kind="cash"></span>
+                <span class="allocation-segment" data-kind="property"></span>
+                <span class="allocation-segment" data-kind="portfolio"></span>
+              </div>
+              <div class="allocation-legend" id="allocationLegend"></div>
+            </div>
+            <div class="net-worth-breakdown">
+              <button type="button" class="net-worth-tile" data-tab="accountsView" aria-label="Open accounts">
+                <span>Cash</span>
+                <strong id="cashTotal">EUR 0</strong>
+              </button>
+              <button type="button" class="net-worth-tile" data-tab="portfolioView" aria-label="Open portfolio">
+                <span>Portfolio</span>
+                <strong id="portfolioTotal">EUR 0</strong>
+              </button>
+              <button type="button" class="net-worth-tile" id="assetsTile" data-tab="accountsView" aria-label="Open assets" hidden>
+                <span>Property</span>
+                <strong id="assetsTotal">EUR 0</strong>
+              </button>
+              <button type="button" class="net-worth-tile" id="debtTile" data-tab="accountsView" aria-label="Open liabilities" hidden>
+                <span>Debt</span>
+                <strong id="debtTotal">EUR 0</strong>
+              </button>
             </div>
           </section>
 
-          <section class="panel">
+          <section class="bare-section">
             <div class="section-head">
               <h2>Recent Activity</h2>
               <button class="nav-action" id="addTxBtn" aria-label="Add transaction">+</button>
             </div>
-            <div class="activity-list" id="activityList"></div>
+            <div class="activity-list list-grouped" id="activityList"></div>
           </section>
         </section>
 
@@ -180,96 +190,122 @@
               <button data-sort="pnl" type="button">PnL</button>
             </div>
           </div>
-          <div class="holding-list" id="holdingList"></div>
+          <div class="holding-list list-grouped" id="holdingList"></div>
         </section>
 
         <section class="view" id="analysisView">
           <header class="view-header">
             <h1>Analysis</h1>
           </header>
-          <div class="insight-grid">
-            <article class="insight-card">
-              <span>Monthly inflow</span>
-              <strong id="monthlyInflow">EUR 0</strong>
-            </article>
-            <article class="insight-card">
-              <span>Monthly outflow</span>
-              <strong id="monthlyOutflow">EUR 0</strong>
-            </article>
-            <article class="insight-card">
-              <span>Savings rate</span>
-              <strong id="savingsRate">0%</strong>
-            </article>
-            <article class="insight-card">
-              <span>Runway</span>
-              <strong id="runwayMonths">--</strong>
-            </article>
-            <article class="insight-card">
-              <span>Portfolio profit</span>
-              <strong id="portfolioProfit">EUR 0</strong>
-            </article>
-            <article class="insight-card">
-              <span>Invested share</span>
-              <strong id="investedShare">0%</strong>
-            </article>
-            <article class="insight-card">
-              <span>Top holding</span>
-              <strong id="topHolding">--</strong>
-            </article>
-            <article class="insight-card">
-              <span>Worth move</span>
-              <strong id="worthMove">Flat</strong>
-            </article>
-            <article class="insight-card">
-              <span>Total assets</span>
-              <strong id="totalAssetsCard">EUR 0</strong>
-            </article>
-            <article class="insight-card">
-              <span>Total debt</span>
-              <strong id="totalDebtCard">EUR 0</strong>
-            </article>
-            <article class="insight-card">
-              <span>Property equity</span>
-              <strong id="propertyEquityCard">EUR 0</strong>
-            </article>
-            <article class="insight-card">
-              <span>Principal paid · month</span>
-              <strong id="principalPaidCard">EUR 0</strong>
-            </article>
-            <article class="insight-card">
-              <span>Savings mix</span>
-              <strong id="savingsMixCard">--</strong>
-            </article>
-          </div>
-          <section class="panel">
-            <div class="section-head">
-              <h2>Evolution</h2>
-              <span id="evolutionLabel">60 days</span>
+
+          <section class="analysis-section">
+            <header class="analysis-head">
+              <span class="eyebrow">Cash flow</span>
+              <small class="muted">This month</small>
+            </header>
+            <div class="insight-grid">
+              <article class="insight-card">
+                <span>Inflow</span>
+                <strong id="monthlyInflow">EUR 0</strong>
+              </article>
+              <article class="insight-card">
+                <span>Outflow</span>
+                <strong id="monthlyOutflow">EUR 0</strong>
+              </article>
+              <article class="insight-card">
+                <span>Savings rate</span>
+                <strong id="savingsRate">0%</strong>
+              </article>
+              <article class="insight-card">
+                <span>Runway</span>
+                <strong id="runwayMonths">--</strong>
+              </article>
+              <article class="insight-card insight-card-wide">
+                <span>Savings mix</span>
+                <strong id="savingsMixCard">--</strong>
+              </article>
             </div>
-            <div class="mini-chart-wrap">
-              <svg id="analysisChart" role="img" aria-label="Net worth evolution chart"></svg>
+            <div class="panel panel-inline">
+              <div class="section-head">
+                <h2>Categories</h2>
+                <span>This month</span>
+              </div>
+              <div class="bar-list" id="categoryBars"></div>
             </div>
           </section>
+
+          <section class="analysis-section">
+            <header class="analysis-head">
+              <span class="eyebrow">Wealth</span>
+              <small class="muted">Snapshot</small>
+            </header>
+            <div class="insight-grid">
+              <article class="insight-card">
+                <span>Total assets</span>
+                <strong id="totalAssetsCard">EUR 0</strong>
+              </article>
+              <article class="insight-card">
+                <span>Total debt</span>
+                <strong id="totalDebtCard">EUR 0</strong>
+              </article>
+              <article class="insight-card">
+                <span>Property equity</span>
+                <strong id="propertyEquityCard">EUR 0</strong>
+              </article>
+              <article class="insight-card">
+                <span>Principal paid</span>
+                <strong id="principalPaidCard">EUR 0</strong>
+              </article>
+              <article class="insight-card insight-card-wide">
+                <span>Worth move</span>
+                <strong id="worthMove">Flat</strong>
+              </article>
+            </div>
+            <div class="panel panel-inline">
+              <div class="section-head">
+                <h2>Account split</h2>
+                <span id="accountSplitLabel">0 accounts</span>
+              </div>
+              <div class="bar-list" id="accountBars"></div>
+            </div>
+          </section>
+
+          <section class="analysis-section">
+            <header class="analysis-head">
+              <span class="eyebrow">Performance</span>
+              <small class="muted">Portfolio</small>
+            </header>
+            <div class="insight-grid">
+              <article class="insight-card">
+                <span>Portfolio profit</span>
+                <strong id="portfolioProfit">EUR 0</strong>
+              </article>
+              <article class="insight-card">
+                <span>Invested share</span>
+                <strong id="investedShare">0%</strong>
+              </article>
+              <article class="insight-card insight-card-wide">
+                <span>Top holding</span>
+                <strong id="topHolding">--</strong>
+              </article>
+            </div>
+            <div class="panel panel-inline">
+              <div class="section-head">
+                <h2>Evolution</h2>
+                <span id="evolutionLabel">60 days</span>
+              </div>
+              <div class="mini-chart-wrap">
+                <svg id="analysisChart" preserveAspectRatio="none" role="img" aria-label="Net worth evolution chart"></svg>
+              </div>
+            </div>
+          </section>
+
           <section class="panel">
             <div class="section-head">
               <h2>Signals</h2>
               <span id="signalCount">0 active</span>
             </div>
             <div class="signal-list" id="signalList"></div>
-          </section>
-          <section class="panel">
-            <div class="section-head">
-              <h2>Account Split</h2>
-              <span id="accountSplitLabel">0 accounts</span>
-            </div>
-            <div class="bar-list" id="accountBars"></div>
-          </section>
-          <section class="panel">
-            <div class="section-head">
-              <h2>Categories</h2>
-              <span>This month</span>
-            </div>
-            <div class="bar-list" id="categoryBars"></div>
           </section>
         </section>
 
@@ -321,6 +357,9 @@
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
         </button>
         <h2 id="accountDetailTitle">Account Detail</h2>
+        <button id="editAccountDetail" class="detail-back-btn" aria-label="Edit account">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        </button>
       </div>
       <div class="metric-grid">
         <article class="metric">
@@ -335,7 +374,7 @@
       <div class="section-head tall">
         <h2>Transactions</h2>
       </div>
-      <div class="activity-list" id="accountDetailTxList"></div>
+      <div class="activity-list list-grouped" id="accountDetailTxList"></div>
     </section>
 
     <!-- Holding Detail View -->
@@ -345,6 +384,9 @@
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
         </button>
         <h2 id="holdingDetailTitle">Holding Detail</h2>
+        <button id="editHoldingDetail" class="detail-back-btn" aria-label="Edit holding">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        </button>
       </div>
       <article class="portfolio-hero">
         <span>Current Value</span>
@@ -402,6 +444,14 @@
             <option value="GBP">GBP</option>
             <option value="INR">INR</option>
           </select>
+        </div>
+        <div class="sheet-row">
+          <label>Theme</label>
+          <div class="segmented" id="themeSegmented" role="tablist" aria-label="Theme">
+            <button type="button" data-theme-value="system">System</button>
+            <button type="button" data-theme-value="light">Light</button>
+            <button type="button" data-theme-value="dark">Dark</button>
+          </div>
         </div>
         <button class="sheet-row sheet-row-button" id="settingsAddAccountBtn">Add account</button>
         <button class="sheet-row sheet-row-button danger" id="lockButton">Lock app</button>
