@@ -18,22 +18,10 @@ let isAuthenticated = false;
 // ----------------------------------------
 // Theme management
 // ----------------------------------------
-const THEME_KEY = "balance-theme";
-function getThemePref() { return localStorage.getItem(THEME_KEY) || "system"; }
-function applyTheme(pref) {
-  const dark = pref === "dark" || (pref === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
-  document.querySelectorAll("#themeSegmented button").forEach(b => {
-    b.classList.toggle("active", b.dataset.themeValue === pref);
-  });
+// Dark-only: the app always uses the near-black theme.
+function applyTheme() {
+  document.documentElement.setAttribute("data-theme", "dark");
 }
-function setThemePref(pref) {
-  localStorage.setItem(THEME_KEY, pref);
-  applyTheme(pref);
-}
-window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-  if (getThemePref() === "system") applyTheme("system");
-});
 
 // ----------------------------------------
 // Haptic helper (no-op when unsupported)
@@ -556,11 +544,11 @@ function renderDualLineChart(target, height, points) {
 }
 
 const ALLOCATION_PALETTE = [
-  "#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6",
-  "#14b8a6", "#f97316", "#ec4899", "#22c55e", "#3b82f6",
-  "#eab308", "#a855f7"
+  "#34d399", "#22d3ee", "#60a5fa", "#fbbf24", "#a78bfa",
+  "#2dd4bf", "#f472b6", "#4ade80", "#818cf8", "#fb923c",
+  "#c084fc", "#facc15"
 ];
-const CASH_COLOR = "#0ea5e9";
+const CASH_COLOR = "#38bdf8";
 
 function renderPortfolioAllocationPie() {
   const availableCash = Math.max(state.portfolioCash || 0, 0);
@@ -2078,13 +2066,7 @@ document.querySelector("#settingsBtn").addEventListener("click", openSettings);
 document.querySelector("#settingsCloseBtn").addEventListener("click", closeSettings);
 settingsBackdrop.addEventListener("click", e => { if (e.target === settingsBackdrop) closeSettings(); });
 
-document.querySelector("#themeSegmented").addEventListener("click", (event) => {
-  const btn = event.target.closest("[data-theme-value]");
-  if (!btn) return;
-  setThemePref(btn.dataset.themeValue);
-  haptic("light");
-});
-applyTheme(getThemePref());
+applyTheme();
 
 // Compact top bar that fades in on scroll
 (function enableCompactTopBar() {

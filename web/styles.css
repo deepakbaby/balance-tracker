@@ -1,5 +1,5 @@
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 
   /* Type */
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
@@ -30,28 +30,32 @@
   --border-radius-lg: var(--radius-lg);
   --border-radius-xl: var(--radius-xl);
 
-  /* Light palette — fresh navy/mint */
-  --bg: #F4F6FA;
-  --surface-1: #FFFFFF;
-  --surface-2: #F1F4F9;
-  --surface-elev: #FFFFFF;
-  --ink: #0A0F1C;
-  --ink-soft: #2A334A;
-  --muted: #6A7591;
-  --line: #E3E8F0;
-  --line-strong: #C8D1E0;
+  /* Near-black neutral canvas (House Expenses look) */
+  --bg: #0e0e0e;
+  --surface-1: #1a1a1a;
+  --surface-2: #161616;
+  --surface-elev: #242424;
+  --ink: #ededed;
+  --ink-soft: #c4c4c4;
+  --muted: #8a8a8a;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
 
-  --accent: #1FB67E;
-  --accent-strong: #14935E;
-  --accent-soft: #DDF6EA;
-  --accent-on: #062418;
+  --accent: #34d399;
+  --accent-strong: #10b981;
+  --accent-soft: rgba(16, 185, 129, 0.15);
+  --accent-on: #06251a;
 
-  --sky: #4D86F0;
-  --sky-soft: #DEEAFE;
-  --gold: #E2A53A;
-  --gold-soft: #FAECCB;
-  --coral: #F45D6C;
-  --coral-soft: #FCDDE1;
+  /* Deep forest gradient for hero cards */
+  --hero-from: #235a44;
+  --hero-to: #173d2e;
+
+  --sky: #6FAEFF;
+  --sky-soft: rgba(92, 156, 255, 0.16);
+  --gold: #F5C46B;
+  --gold-soft: rgba(242, 179, 65, 0.18);
+  --coral: #FF8A95;
+  --coral-soft: rgba(255, 107, 122, 0.18);
 
   --good: var(--accent);
   --danger: var(--coral);
@@ -60,7 +64,7 @@
 
   --panel: var(--surface-1);
   --soft-panel: var(--surface-2);
-  --glass: rgba(255, 255, 255, 0.72);
+  --glass: rgba(20, 20, 20, 0.72);
 
   /* Shadow ladder */
   --shadow-1: 0 1px 2px rgba(10, 15, 28, 0.04), 0 6px 14px rgba(10, 15, 28, 0.05);
@@ -75,23 +79,26 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #070B17;
-  --surface-1: #121829;
-  --surface-2: #1A2235;
-  --surface-elev: #1E2740;
-  --ink: #E6ECF5;
-  --ink-soft: #B7C0D4;
-  --muted: #8893AC;
-  --line: #243049;
-  --line-strong: #344265;
+  --bg: #0e0e0e;
+  --surface-1: #1a1a1a;
+  --surface-2: #161616;
+  --surface-elev: #242424;
+  --ink: #ededed;
+  --ink-soft: #c4c4c4;
+  --muted: #8a8a8a;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
 
-  --accent: #2DE3A0;
-  --accent-strong: #5BF0B9;
-  --accent-soft: rgba(45, 227, 160, 0.16);
-  --accent-on: #061B14;
+  --accent: #34d399;
+  --accent-strong: #10b981;
+  --accent-soft: rgba(16, 185, 129, 0.15);
+  --accent-on: #06251a;
+
+  --hero-from: #235a44;
+  --hero-to: #173d2e;
 
   --sky: #6FAEFF;
-  --sky-soft: rgba(92, 156, 255, 0.18);
+  --sky-soft: rgba(92, 156, 255, 0.16);
   --gold: #F5C46B;
   --gold-soft: rgba(242, 179, 65, 0.18);
   --coral: #FF8A95;
@@ -104,7 +111,7 @@
 
   --panel: var(--surface-1);
   --soft-panel: var(--surface-2);
-  --glass: rgba(18, 24, 41, 0.66);
+  --glass: rgba(20, 20, 20, 0.72);
 
   --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.45), 0 6px 18px rgba(0, 0, 0, 0.32);
   --shadow-2: 0 14px 32px rgba(0, 0, 0, 0.45);
@@ -2071,7 +2078,7 @@ input:focus, select:focus, textarea:focus {
   background: rgba(18, 24, 41, 0.78);
   border-color: rgba(255, 255, 255, 0.08);
 }
-[data-theme="dark"] .tab { color: rgba(255, 255, 255, 0.7); }
+[data-theme="dark"] .tab { color: var(--muted); }
 [data-theme="dark"] .tab:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
 [data-theme="dark"] .tab.active {
   background: linear-gradient(135deg, var(--accent-strong), var(--accent));
@@ -2350,3 +2357,143 @@ input:focus, select:focus, textarea:focus {
   font-size: var(--fs-body);
   color: var(--ink);
 }
+
+/* ============================================================
+   House Expenses theme overrides (dark-only, emerald + forest)
+   ============================================================ */
+
+/* Flat near-black canvas with a faint green glow */
+body {
+  background:
+    radial-gradient(circle at 50% -12%, var(--accent-soft), transparent 42%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+/* Hero cards → deep forest gradient with white text */
+.metric.primary,
+.portfolio-hero {
+  background: linear-gradient(150deg, var(--hero-from), var(--hero-to));
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+.metric.primary strong,
+.portfolio-hero strong { color: #fff; }
+.metric.primary span,
+.metric.primary small,
+.portfolio-hero span,
+.portfolio-hero em,
+.portfolio-hero small { color: rgba(255, 255, 255, 0.72); }
+
+/* Chips that sit ON the green hero: translucent track, white active pill */
+.metric.primary .perspective-tabs,
+.metric.primary .range-tabs {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.metric.primary .perspective-tabs button,
+.metric.primary .range-tabs button { color: rgba(255, 255, 255, 0.7); }
+.metric.primary .perspective-tabs button.active,
+.metric.primary .range-tabs button.active {
+  background: #fff;
+  color: var(--hero-to);
+  box-shadow: none;
+}
+
+/* Net-worth delta readable on the green card */
+.net-worth-main #netWorthDelta.positive { color: #7ef0c0; }
+.net-worth-main #netWorthDelta.negative { color: #ffb4ba; }
+
+/* Add (+) buttons → borderless emerald glyph (no circle) */
+.nav-action {
+  background: transparent;
+  color: var(--accent);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 2rem;
+  font-weight: 300;
+}
+.nav-action:hover { color: var(--accent-strong); }
+/* the icon (ghost) buttons keep their subtle container */
+.nav-action.ghost {
+  background: var(--surface-1);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 18px;
+  box-shadow: var(--shadow-1);
+}
+
+/* Primary buttons → crisp dark text on emerald */
+.primary-button,
+.inline-form button,
+.holding-form button,
+.chat-box button,
+.lock-card button,
+.modal button.primary { color: var(--accent-on); }
+
+/* Active tab → forest→emerald gradient */
+.tab.active {
+  background: linear-gradient(135deg, var(--hero-from), var(--accent-strong));
+}
+
+/* Stray light hover left over from the old light theme */
+.text-button:hover { background: var(--surface-2); }
+
+/* Centered modal popup (match reno_tracker) instead of a bottom sheet */
+.modal-backdrop {
+  align-items: center;
+  padding: 16px;
+}
+.modal {
+  width: min(480px, 100%);
+  border-radius: 24px;
+  max-height: 88vh;
+  animation: modalPop 0.24s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.modal::before { display: none; }           /* drop the bottom-sheet drag handle */
+@keyframes modalPop {
+  from { opacity: 0; transform: translateY(12px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Bottom-locked nav (match reno_tracker) instead of a floating pill */
+.tabbar {
+  left: 50%;
+  right: auto;
+  bottom: 0;
+  width: min(680px, 100%);
+  max-width: 100%;
+  transform: translateX(-50%);
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 8px 16px calc(8px + env(safe-area-inset-bottom));
+}
+
+/* Lock screen: app-icon tile + centered (match reno_tracker) */
+.lock-icon {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 18px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(150deg, var(--hero-from), var(--hero-to));
+}
+.lock-icon svg { width: 30px; height: 30px; }
+.lock-card { text-align: center; }
+.lock-card form { text-align: left; }
+
+/* Settings: centered popup (match the + modal) instead of a bottom sheet */
+.sheet-backdrop { align-items: center; }
+.sheet {
+  width: min(420px, 100% - 32px);
+  max-width: none;
+  border-radius: 24px;
+  box-shadow: var(--shadow-3);
+  animation: modalPop 0.24s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.sheet-handle { display: none; }

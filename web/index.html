@@ -4,26 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="robots" content="noindex,nofollow" />
-    <meta name="theme-color" content="#F4F6FA" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#070B17" media="(prefers-color-scheme: dark)" />
-    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#0e0e0e" />
+    <meta name="color-scheme" content="dark" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Balance" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Balance Tracker</title>
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" sizes="180x180" href="./icon-180x180.png" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="icon" type="image/png" sizes="192x192" href="./icon-192x192.png" />
     <script>
-      (function () {
-        try {
-          var saved = localStorage.getItem("balance-theme") || "system";
-          var dark = saved === "dark" || (saved === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-          document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
-        } catch (_) {
-          document.documentElement.setAttribute("data-theme", "light");
-        }
-      })();
+      document.documentElement.setAttribute("data-theme", "dark");
     </script>
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -339,9 +331,14 @@
 
     <div class="lock-screen" id="lockScreen">
       <div class="lock-card">
-        <p class="eyebrow">deepakbaby.in private</p>
-        <h2>Sign In</h2>
-        <p class="muted">Your tracker now syncs with the private backend. Use your balance tracker account to unlock it.</p>
+        <div class="lock-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 5 V19 H19"/>
+            <path d="M8 16 12 12 14.5 14 19 8.5"/>
+          </svg>
+        </div>
+        <h2>Balance</h2>
+        <p class="muted">Private — sign in to continue.</p>
         <form id="pinForm">
           <input id="usernameInput" autocomplete="username" placeholder="Username" value="deepak" required />
           <input id="pinInput" autocomplete="current-password" type="password" placeholder="Password" required />
@@ -444,14 +441,6 @@
             <option value="GBP">GBP</option>
             <option value="INR">INR</option>
           </select>
-        </div>
-        <div class="sheet-row">
-          <label>Theme</label>
-          <div class="segmented" id="themeSegmented" role="tablist" aria-label="Theme">
-            <button type="button" data-theme-value="system">System</button>
-            <button type="button" data-theme-value="light">Light</button>
-            <button type="button" data-theme-value="dark">Dark</button>
-          </div>
         </div>
         <button class="sheet-row sheet-row-button" id="settingsAddAccountBtn">Add account</button>
         <button class="sheet-row sheet-row-button danger" id="lockButton">Lock app</button>
