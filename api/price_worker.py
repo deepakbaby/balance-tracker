@@ -1,3 +1,4 @@
+import math
 import os
 import time
 import psycopg2
@@ -43,11 +44,18 @@ def fetch_prices():
             elif yf_sym == "ETH": yf_sym = "ETH-USD"
             
             ticker = yf.Ticker(yf_sym)
-            history = ticker.history(period="5d")
+            history = ticker.history(period="1mo")
 
-            if not history.empty:
-                price = float(history['Close'].iloc[-1])
-                prev_close = float(history['Close'].iloc[-2]) if len(history) >= 2 else None
+            closes = history["Close"].dropna() if not history.empty else None
+            if closes is not None and not closes.empty:
+                price = float(closes.iloc[-1])
+                prev_close = float(closes.iloc[-2]) if len(closes) >= 2 else None
+
+                if not math.isfinite(price) or price <= 0:
+                    print(f"Skipping {symbol}: implausible price {price}")
+                    continue
+                if prev_close is not None and not math.isfinite(prev_close):
+                    prev_close = None
 
                 cur.execute(
                     "UPDATE holdings SET price = %s, previous_close = %s, last_price_at = CURRENT_TIMESTAMP WHERE symbol = %s",

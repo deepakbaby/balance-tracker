@@ -3,6 +3,7 @@ import base64
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import secrets
@@ -47,6 +48,7 @@ ALLOWED_ORIGIN = os.environ.get("BALANCE_ALLOWED_ORIGIN", "http://localhost:4173
 
 # Extreme rate limit logic
 FAILED_LOGINS = {}
+LOGIN_LOCK_WINDOW = 900  # seconds before a failed-login counter resets
 
 @contextmanager
 def db_cursor():
@@ -74,6 +76,16 @@ def init_db():
                            ("account1", 0, "account2", 0))
     except psycopg2.errors.UndefinedTable:
         print("Database not migrated yet. Please run python3 api/migrate.py first.")
+
+
+def scrub_nonfinite(obj):
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: scrub_nonfinite(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [scrub_nonfinite(v) for v in obj]
+    return obj
 
 
 def hash_password(password):
@@ -732,8 +744,11 @@ class Handler(BaseHTTPRequestHandler):
                 def stringify_h(row):
                     d = dict(row)
                     d["id"] = str(d["id"])
-                    for field in ["quantity", "cost", "price"]: d[field] = float(d[field])
-                    d["previous_close"] = float(d["previous_close"]) if d.get("previous_close") is not None else None
+                    for field in ["quantity", "cost", "price"]:
+                        v = float(d[field]) if d[field] is not None else 0.0
+                        d[field] = v if math.isfinite(v) else 0.0
+                    pc = float(d["previous_close"]) if d.get("previous_close") is not None else None
+                    d["previous_close"] = pc if pc is not None and math.isfinite(pc) else None
                     d["currency"] = clean_currency(d.get("currency"))
                     if d.get("created_at"): d["created_at"] = str(d["created_at"])
                     if d.get("last_price_at"): d["last_price_at"] = str(d["last_price_at"])
@@ -788,13 +803,16 @@ class Handler(BaseHTTPRequestHandler):
                 cur.execute("SELECT * FROM users WHERE username = %s", (body.get("username"),))
                 row = cur.fetchone()
                 
-                req_ip = self.client_address[0]
-                if FAILED_LOGINS.get(req_ip, 0) > 5:
-                    return self.json({"error": "Too many failed attempts. Locked."}, 429)
+                req_ip = self.headers.get("X-Real-IP", self.client_address[0])
+                count, first = FAILED_LOGINS.get(req_ip, (0, 0.0))
+                if time.time() - first > LOGIN_LOCK_WINDOW:
+                    count, first = 0, time.time()
+                if count > 5:
+                    return self.json({"error": "Too many failed attempts. Try again later."}, 429)
 
                 if row and verify_password(body.get("password", ""), row["password_hash"]):
                     token = sign_session(row["username"])
-                    FAILED_LOGINS[req_ip] = 0
+                    FAILED_LOGINS.pop(req_ip, None)
                     self.send_response(200)
                     cookie_str = f"balance_session={token}; HttpOnly; SameSite=Lax; Path=/; Max-Age={SESSION_TTL}"
                     if ENVIRONMENT == "production": cookie_str += "; Secure"
@@ -805,7 +823,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.wfile.write(payload)
                     return
                 else:
-                    FAILED_LOGINS[req_ip] = FAILED_LOGINS.get(req_ip, 0) + 1
+                    FAILED_LOGINS[req_ip] = (count + 1, first or time.time())
                     
             return self.json({"error": "Invalid login"}, 401)
         if not self.require_auth():
@@ -985,7 +1003,7 @@ class Handler(BaseHTTPRequestHandler):
         return False
 
     def json(self, data, status=200):
-        payload = json.dumps(data).encode('utf-8') if data is not None else b"{}"
+        payload = json.dumps(scrub_nonfinite(data), allow_nan=False).encode('utf-8') if data is not None else b"{}"
         self.send_response(status)
         self.send_header("Content-Length", str(len(payload)))
         self.send_headers()
